@@ -1,0 +1,27 @@
+{
+  "name": "nft-stake-farm",
+  "version": "2.0.0",
+  "description": "NFT staking farm with a late-bound reward token, plus a farm site and an owner control panel. Built and tested for PulseChain.",
+  "license": "MIT",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:soak": "node scripts/soak.js",
+    "node": "hardhat node",
+    "abi": "node scripts/export-abi.js",
+    "precheck": "hardhat run scripts/precheck.js --network pulsechain",
+    "battletest": "node scripts/run-battletest.js",
+    "deploy:local": "hardhat run scripts/deploy.js --network localPulse",
+    "deploy:local:full": "hardhat run scripts/deploy-full.js --network localPulse",
+    "deploy:live": "hardhat run scripts/deploy-live.js --network pulsechain",
+    "e2e:local": "hardhat run scripts/e2e-local.js --network localPulse",
+    "web": "node scripts/export-abi.js && node scripts/serve.js"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.17"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  }
+}

@@ -1,0 +1,32 @@
+# Only web/ is published. Everything below is either secret, irrelevant to a
+# static site, or actively dangerous to expose.
+
+# --- SECRETS. Never upload. ---------------------------------------------
+.env
+.env.*
+*.key
+*.pem
+
+# --- The owner control panel. Never publish. ----------------------------
+# These are gitignored too, but `vercel` CLI uploads the working tree, not the
+# git index — so they must be excluded here as well or a local deploy would
+# push the owner-only UI straight to a public URL.
+web/admin.html
+web/assets/admin.js
+
+# --- Not needed for a static site ---------------------------------------
+node_modules
+artifacts
+cache
+coverage
+coverage.json
+typechain
+typechain-types
+contracts
+scripts
+test
+deployments
+hardhat.config.js
+package-lock.json
+*.log
+.tmpprobe

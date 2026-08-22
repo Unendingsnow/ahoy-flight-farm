@@ -1,0 +1,17 @@
+{
+  "network": "pulsechain",
+  "chainId": 369,
+  "deployedAt": "2026-08-22T09:39:27.098Z",
+  "deployer": "0xe872F01C6Aa82757586356D0323cc4FBb6519aEC",
+  "farm": "0x71432b22a63F0f14CA43e00fc269809D3570AC00",
+  "stakingToken": "0x6f9264E1a08EbEcf5928a83663BcBEFBaFB14f6f",
+  "rewardsToken": "0x3b15eB3231740790f023Bc7B9062789D531e9a21",
+  "configured": true,
+  "deployBlock": 27349659,
+  "deployGas": "2380475",
+  "budget": "30000000.0",
+  "rewardRatePerSecond": "0.095129375951293759",
+  "rewardsDuration": 315360000,
+  "periodFinish": 2102751565,
+  "explorer": "https://scan.pulsechain.com/address/0x71432b22a63F0f14CA43e00fc269809D3570AC00"
+}

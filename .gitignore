@@ -1,0 +1,72 @@
+# =============================================================================
+# SECRETS — never commit. A leaked key here controls the farm owner wallet.
+# =============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.keystore
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+secrets.json
+secret*.json
+.secret
+.secrets
+mnemonic.txt
+*.mnemonic
+seed.txt
+wallet.json
+keystore/
+
+# =============================================================================
+# Owner control panel — never publish. Convenience UI for owner-only calls.
+# NOTE: the Vercel CLI uploads the working tree, not the git index, so
+# .vercelignore blocks these too. Keep both in sync.
+# =============================================================================
+web/admin.html
+web/assets/admin.js
+
+# =============================================================================
+# Build output / dependencies — all regenerable
+# =============================================================================
+node_modules
+cache
+artifacts
+coverage
+coverage.json
+typechain
+typechain-types
+
+# =============================================================================
+# Local deployment records. Live-network records ARE committed
+# (deployments/pulsechain.json is the deployed farm — keep it).
+# =============================================================================
+deployments/hardhat.json
+deployments/localhost.json
+deployments/localPulse.json
+
+# =============================================================================
+# Local backups — the pre-cleanup archive contains a copy of .env
+# =============================================================================
+*-BACKUP-*.zip
+*.bak
+
+# =============================================================================
+# Tooling / editor / OS
+# =============================================================================
+.vercel
+.tmpprobe/
+tmp/
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*~
