@@ -181,12 +181,22 @@ drift from the contract.
 
 - **The site needs only the farm address.** The collection, the reward token and
   its symbol/decimals are all read off the farm via `farmInfo()`.
-- **Ownership discovery degrades gracefully.** It probes `owned()`, `ownedIds()`,
-  `tokensOfOwner()`, then `balanceOf` + `tokenOfOwnerByIndex`, and finally falls
-  back to an adaptive `ownerOf` sweep through **Multicall3** — which works
-  against any ERC-721 whatsoever. The live collection needs that fallback; the
-  full sweep of 2,833 tokens takes ~2.6s and is cached for 60s, invalidated
-  whenever ownership changes.
+- **Ownership discovery degrades gracefully**, in three tiers:
+  1. Native enumeration — `owned()`, `ownedIds()`, `tokensOfOwner()`, or
+     `balanceOf` + `tokenOfOwnerByIndex`. The live collection has none of these.
+  2. **Transfer logs** (the live path). One filtered `eth_getLogs` returns every
+     token ever sent to the wallet — a mint is a Transfer from the zero address,
+     so nothing is missed — and `ownerOf` then confirms which are still held,
+     because a token received and later sent on still has an inbound Transfer.
+     **~1.0–1.4s**, and it scales with the *wallet's* history rather than the
+     collection's size, so it stays fast on a collection of any supply.
+  3. **Adaptive `ownerOf` sweep via Multicall3** — the backstop for RPCs that
+     refuse a wide block range. ~3–5s for 2,833 tokens, cached for 60s and
+     invalidated whenever ownership changes.
+
+  Tier 2 must ignore Transfer logs with only 3 topics: an ERC-404 emits
+  ERC-20-style transfers from the same address, where the third field is a
+  *value*, not a token id.
 - **Artwork falls back gracefully.** `tokenURI` → metadata → image, with IPFS
   rewriting and a 7s timeout; failures render a deterministic badge.
 - **Times come from chain time**, not the browser clock.

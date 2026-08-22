@@ -18,6 +18,7 @@
       farmAddress: null,
       farm: null,
       nft: null,
+      nftAddress: null,
       reward: null,
       rewardMeta: null, // { symbol, decimals, name }
       nftMeta: null, // { symbol, name }
@@ -263,6 +264,7 @@
     s.farmAddress = resolveFarmAddress(s.chainId);
     s.farm = s.farmAddress ? new E.Contract(s.farmAddress, abi.farm, s.signer) : null;
     s.nft = null;
+    s.nftAddress = null;
     s.reward = null;
     s.rewardMeta = null;
     s.nftMeta = null;
@@ -283,6 +285,7 @@
 
     if (info.stakingToken_ !== ZERO) {
       s.nft = new E.Contract(info.stakingToken_, abi.nft, s.signer);
+      s.nftAddress = info.stakingToken_;
       s.nftMeta = await readTokenMeta(s.nft, { name: "NFT Collection", symbol: "NFT" });
     }
     if (info.rewardsToken_ !== ZERO) {
@@ -427,6 +430,87 @@
     return owners;
   };
 
+  const TRANSFER_TOPIC = E.id("Transfer(address,address,uint256)");
+
+  /** Keep only the ids `owner` still holds, checked on chain in one batch. */
+  Farm.filterOwned = async function (owner, ids) {
+    const s = Farm.state;
+    if (!ids.length) return [];
+    const target = owner.toLowerCase();
+
+    const code = await s.provider.getCode(MULTICALL3).catch(() => "0x");
+    if (code !== "0x") {
+      const mc = new E.Contract(MULTICALL3, MC3_ABI, s.provider);
+      const calls = ids.map((id) => ({
+        target: s.nftAddress,
+        allowFailure: true,
+        callData: OWNER_OF.encodeFunctionData("ownerOf", [id]),
+      }));
+      const res = await mc.aggregate3.staticCall(calls);
+      return ids.filter((id, i) => {
+        const r = res[i];
+        if (!r.success || !r.returnData || r.returnData === "0x") return false;
+        return E.getAddress("0x" + r.returnData.slice(26)).toLowerCase() === target;
+      });
+    }
+
+    // No Multicall3 on this chain — fall back to individual reads.
+    const out = [];
+    for (const id of ids) {
+      try {
+        if ((await s.nft.ownerOf(id)).toLowerCase() === target) out.push(id);
+      } catch { /* burned or never minted */ }
+    }
+    return out;
+  };
+
+  /**
+   * Discover holdings from Transfer logs.
+   *
+   * Any token an address owns must have been transferred TO it at some point
+   * (a mint is a Transfer from the zero address), so one filtered getLogs call
+   * yields every candidate. Cost scales with the WALLET's history rather than
+   * the collection's size, which is why this beats sweeping the whole id range:
+   * ~0.6s versus ~3-5s on the live collection, and it stays fast on a
+   * collection of any size.
+   *
+   * Candidates are then confirmed with ownerOf, because a token that was
+   * received and later sent on still has an inbound Transfer.
+   *
+   * Returns null when the RPC refuses the query, so the caller can fall back.
+   */
+  Farm.discoverViaLogs = async function (owner) {
+    const s = Farm.state;
+    if (!s.nft || !s.provider) return null;
+
+    let logs;
+    try {
+      logs = await s.provider.getLogs({
+        address: s.nftAddress,
+        fromBlock: 0,
+        toBlock: "latest",
+        topics: [TRANSFER_TOPIC, null, E.zeroPadValue(E.getAddress(owner), 32)],
+      });
+    } catch {
+      return null; // many public RPCs cap the block range — caller sweeps instead
+    }
+
+    // An ERC-721 Transfer indexes (from, to, tokenId) => 4 topics. An ERC-404
+    // emits ERC-20-style Transfers from the SAME address with only 3 topics,
+    // where the third field is a value, not a tokenId. Ignore those or we would
+    // treat a token amount as an id.
+    const ids = [
+      ...new Set(
+        logs.filter((l) => l.topics.length === 4).map((l) => BigInt(l.topics[3]).toString())
+      ),
+    ];
+    if (!ids.length) return { ids: [], method: "transfer logs" };
+
+    const held = await Farm.filterOwned(owner, ids);
+    held.sort((a, b) => Number(a) - Number(b));
+    return { ids: held, method: "transfer logs" };
+  };
+
   /**
    * Find the ids `owner` holds.
    *
@@ -466,7 +550,15 @@
       }
     }
 
-    // Nothing to enumerate — sweep ownerOf across the id range.
+    // No native enumeration. Transfer logs are the fast path; the ownerOf sweep
+    // is the backstop for RPCs that refuse a wide getLogs range.
+    try {
+      const viaLogs = await Farm.discoverViaLogs(owner);
+      if (viaLogs) return viaLogs;
+    } catch (err) {
+      console.warn("log discovery failed, sweeping instead", err);
+    }
+
     try {
       const owners = await Farm.sweepOwners(onProgress);
       const target = owner.toLowerCase();
