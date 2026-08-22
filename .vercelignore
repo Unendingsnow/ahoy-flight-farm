@@ -30,3 +30,6 @@ hardhat.config.js
 package-lock.json
 *.log
 .tmpprobe
+
+# Local preview/scratch pages
+web/_*

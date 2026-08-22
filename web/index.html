@@ -3,18 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NFT Stake Farm — stake your NFTs, earn rewards</title>
-<meta name="description" content="Stake your NFTs and earn a hard-capped reward drip, second by second.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B1%3C/text%3E%3C/svg%3E">
+<title>Open Sky — send your NFTs up, earn rewards</title>
+<meta name="description" content="Send your NFTs up and earn rewards every second they're in the air. Bring them home whenever you like.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%98%81%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
 
 <div class="sky"></div>
-<div class="clouds">
-  <div class="cloud cloud--a"></div>
-  <div class="cloud cloud--b"></div>
-  <div class="cloud cloud--c"></div>
+<div class="clouds" aria-hidden="true">
+  <div class="cloud cloud--a"><i></i></div>
+  <div class="cloud cloud--b"><i></i></div>
+  <div class="cloud cloud--c"><i></i></div>
+  <div class="cloud cloud--d"><i></i></div>
+  <div class="cloud cloud--e"><i></i></div>
 </div>
 
 <!-- ------------------------------------------------------------------ nav -->
@@ -22,13 +24,13 @@
   <div class="wrap nav__inner">
     <a class="brand" href="./">
       <span class="brand__mark">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#ffc46b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M10.2 2.6a1.6 1.6 0 0 1 3.1 0l1.1 6.1 6.6 3.6a1.2 1.2 0 0 1 .6 1v1.2l-7.6-1.9-.7 4.3 2.4 1.9v1.4l-3.9-1-3.9 1v-1.4l2.4-1.9-.7-4.3L2 14.5v-1.2a1.2 1.2 0 0 1 .6-1l6.6-3.6z"/>
         </svg>
       </span>
       <span class="brand__text">
-        <span class="brand__name">NFT Stake Farm</span>
-        <span class="brand__sub">NFT · staking</span>
+        <span class="brand__name">Open Sky</span>
+        <span class="brand__sub">staking</span>
       </span>
     </a>
 
@@ -43,158 +45,163 @@
 
 <!-- ----------------------------------------------------------------- hero -->
 <header class="hero wrap">
-  <div class="hero__eyebrow">Vault open</div>
-  <h1>Stake your NFTs.<br>Collect rewards.</h1>
+  <div class="hero__eyebrow" id="heroBadge">Rewards are live</div>
+  <h1>Send your NFTs up.<br>Earn while they fly.</h1>
   <p class="hero__lede">
-    Stake the NFTs you actually own — specific token IDs, returned to you exactly as they went in.
-    A fixed reward budget streams out second by second, split across every staked NFT.
+    Connect your wallet and we'll find your NFTs for you. Send them up with one tap —
+    they start earning straight away, and you can bring them home any time you like.
   </p>
   <div class="hero__cta">
-    <button class="btn btn--primary" id="heroConnect">Connect &amp; start farming</button>
-    <a class="btn btn--ghost" href="#vault">View the vault</a>
+    <button class="btn btn--primary" id="heroConnect">Connect wallet</button>
+    <a class="btn btn--ghost" href="#vault">See my NFTs</a>
   </div>
 </header>
 
 <main class="wrap">
 
-  <!-- status notices -->
   <div id="notices" class="stack" style="margin-bottom:1.4rem"></div>
 
-  <!-- ---------------------------------------------------------- stats band -->
-  <section class="section" aria-label="Farm statistics">
+  <!-- ------------------------------------------------------------- your bit -->
+  <section class="section grid grid--two">
+    <div class="card card--feature">
+      <div class="stat__label">Your rewards, so far</div>
+      <div class="reward__amount">
+        <span id="rEarned">0</span><span class="reward__symbol" id="rSymbol"></span>
+      </div>
+      <div class="reward__rate" id="rRate">Connect your wallet to start earning.</div>
+
+      <div class="meter" title="How much of the daily rewards your NFTs are earning">
+        <div class="meter__fill" id="rShareBar" style="width:0%"></div>
+      </div>
+
+      <div class="reward__actions">
+        <button class="btn btn--primary" id="claimBtn" disabled>Claim rewards</button>
+        <button class="btn" id="exitBtn" disabled>Bring all home &amp; claim</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section__head" style="margin-bottom:0.85rem">
+        <h2 class="section__title">Your flight</h2>
+      </div>
+      <dl class="kv">
+        <dt>NFTs in the air</dt><dd id="fYourStake">—</dd>
+        <dt>Your share of rewards</dt><dd id="fYourShare">—</dd>
+        <dt>You earn about</dt><dd id="fYourDay">—</dd>
+        <dt>Already in your wallet</dt><dd id="fWalletBal">—</dd>
+      </dl>
+      <hr class="divider">
+      <dl class="kv">
+        <dt>Reward</dt><dd id="fRewardToken">—</dd>
+        <dt>Collection</dt><dd id="fNftToken">—</dd>
+        <dt>Rewards run until</dt><dd id="fEnds">—</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- your NFTs -->
+  <section class="section" id="vault">
+    <div class="section__head">
+      <h2 class="section__title">Your NFTs</h2>
+      <span class="section__hint" id="vaultHint">Tap any to pick just those — or use the buttons to move everything at once.</span>
+    </div>
+
+    <div class="grid grid--two">
+      <!-- on the ground -->
+      <div class="card">
+        <div class="vault__toolbar">
+          <strong style="font-size:0.95rem">On the ground</strong>
+          <span class="vault__count" id="freeCount">0</span>
+          <span class="section__spacer"></span>
+          <button class="btn btn--sm btn--ghost" id="selectAllFree">Pick all</button>
+          <button class="btn btn--sm btn--ghost" id="clearFree">Clear</button>
+        </div>
+        <div class="nfts" id="freeGrid"></div>
+        <div style="margin-top:1rem" class="row row--tight">
+          <button class="btn btn--primary btn--wide" id="stakeBtn" disabled>Send up</button>
+        </div>
+        <p class="muted" id="stakeHelp" style="margin-top:0.6rem;font-size:0.8rem"></p>
+      </div>
+
+      <!-- in the air -->
+      <div class="card">
+        <div class="vault__toolbar">
+          <strong style="font-size:0.95rem">In the air</strong>
+          <span class="vault__count" id="stakedCount">0</span>
+          <span class="section__spacer"></span>
+          <button class="btn btn--sm btn--ghost" id="selectAllStaked">Pick all</button>
+          <button class="btn btn--sm btn--ghost" id="clearStaked">Clear</button>
+        </div>
+        <div class="nfts" id="stakedGrid"></div>
+        <div style="margin-top:1rem" class="row row--tight">
+          <button class="btn btn--wide" id="withdrawBtn" disabled>Bring home</button>
+        </div>
+        <p class="muted" style="margin-top:0.6rem;font-size:0.8rem">
+          Bringing them home never costs you your rewards — they keep whatever they've earned.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ the farm -->
+  <section class="section" aria-label="Farm overview">
+    <div class="section__head">
+      <h2 class="section__title">Everyone else</h2>
+      <span class="section__hint">The fewer NFTs in the air, the more each one earns.</span>
+    </div>
     <div class="grid grid--stats">
       <div class="card">
-        <div class="stat__label">NFTs staked</div>
+        <div class="stat__label">In the air</div>
         <div class="stat__value" id="sTotalStaked">—</div>
         <div class="stat__note" id="sStakers">—</div>
       </div>
       <div class="card">
-        <div class="stat__label">Emissions / day</div>
+        <div class="stat__label">Shared every day</div>
         <div class="stat__value" id="sPerDay">—<span class="stat__unit" id="sPerDayUnit"></span></div>
         <div class="stat__note" id="sPerApeDay">—</div>
       </div>
       <div class="card">
-        <div class="stat__label">Reward reserve</div>
+        <div class="stat__label">Rewards left</div>
         <div class="stat__value" id="sReserve">—<span class="stat__unit" id="sReserveUnit"></span></div>
         <div class="stat__note" id="sOwed">—</div>
       </div>
       <div class="card">
-        <div class="stat__label">Window remaining</div>
+        <div class="stat__label">Time left</div>
         <div class="stat__value" id="sRemaining">—</div>
         <div class="stat__note" id="sDuration">—</div>
       </div>
     </div>
   </section>
 
-  <!-- ------------------------------------------------------------- rewards -->
-  <section class="section grid grid--two">
-    <div class="card card--feature">
-      <div class="stat__label">Your unclaimed rewards</div>
-      <div class="reward__amount">
-        <span id="rEarned">0</span><span class="reward__symbol" id="rSymbol">—</span>
-      </div>
-      <div class="reward__rate" id="rRate">Connect a wallet to see your stream.</div>
-
-      <div class="meter" title="Share of the stream your NFTs are earning">
-        <div class="meter__fill" id="rShareBar" style="width:0%"></div>
-      </div>
-
-      <div class="reward__actions">
-        <button class="btn btn--primary" id="claimBtn" disabled>Claim rewards</button>
-        <button class="btn" id="exitBtn" disabled>Exit — unstake all &amp; claim</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="section__head" style="margin-bottom:0.85rem">
-        <h2 class="section__title">Drip schedule</h2>
-      </div>
-      <dl class="kv">
-        <dt>Your NFTs staked</dt><dd id="fYourStake">—</dd>
-        <dt>Your share of stream</dt><dd id="fYourShare">—</dd>
-        <dt>Your est. per day</dt><dd id="fYourDay">—</dd>
-        <dt>Wallet balance</dt><dd id="fWalletBal">—</dd>
-      </dl>
-      <hr class="divider">
-      <dl class="kv">
-        <dt>Reward token</dt><dd id="fRewardToken">—</dd>
-        <dt>Collection</dt><dd id="fNftToken">—</dd>
-        <dt>Drip ends</dt><dd id="fEnds">—</dd>
-      </dl>
-    </div>
-  </section>
-
-  <!-- -------------------------------------------------------------- vault -->
-  <section class="section" id="vault">
-    <div class="section__head">
-      <h2 class="section__title">The vault</h2>
-      <span class="section__hint">Tap an NFT to select it. Stake or withdraw as many as you like in one go.</span>
-    </div>
-
-    <div class="grid grid--two">
-      <!-- unstaked -->
-      <div class="card">
-        <div class="vault__toolbar">
-          <strong style="font-size:0.95rem">In your wallet</strong>
-          <span class="vault__count" id="freeCount">0</span>
-          <span class="section__spacer"></span>
-          <button class="btn btn--sm btn--ghost" id="selectAllFree">Select all</button>
-          <button class="btn btn--sm btn--ghost" id="clearFree">Clear</button>
-        </div>
-        <div class="nfts" id="freeGrid"></div>
-        <div style="margin-top:1rem" class="row row--tight">
-          <button class="btn btn--wide" id="approveBtn" hidden>Approve the farm</button>
-          <button class="btn btn--primary btn--wide" id="stakeBtn" disabled>Stake selected</button>
-        </div>
-      </div>
-
-      <!-- staked -->
-      <div class="card">
-        <div class="vault__toolbar">
-          <strong style="font-size:0.95rem">Staked</strong>
-          <span class="vault__count" id="stakedCount">0</span>
-          <span class="section__spacer"></span>
-          <button class="btn btn--sm btn--ghost" id="selectAllStaked">Select all</button>
-          <button class="btn btn--sm btn--ghost" id="clearStaked">Clear</button>
-        </div>
-        <div class="nfts" id="stakedGrid"></div>
-        <div style="margin-top:1rem">
-          <button class="btn btn--wide" id="withdrawBtn" disabled>Withdraw selected</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- -------------------------------------------------------- how it works -->
   <section class="section">
-    <div class="section__head"><h2 class="section__title">How the drip works</h2></div>
+    <div class="section__head"><h2 class="section__title">How it works</h2></div>
     <div class="grid grid--stats">
       <div class="card">
-        <div class="stat__label">01 · Fixed budget</div>
+        <div class="stat__label">01 · Connect</div>
         <p class="muted" style="margin:0;font-size:0.88rem;line-height:1.6">
-          The farm can only ever pay out what has actually been deposited into it. The total is capped —
-          there is no mint function behind it.
+          We find your NFTs automatically. Nothing to look up, nothing to type in.
         </p>
       </div>
       <div class="card">
-        <div class="stat__label">02 · Pro-rata, per second</div>
+        <div class="stat__label">02 · Send them up</div>
         <p class="muted" style="margin:0;font-size:0.88rem;line-height:1.6">
-          Every staked NFT is one equal share. Fewer NFTs staked means a bigger slice each —
-          the total stream never changes.
+          One tap sends everything up. The first time, your wallet will ask for
+          permission — after that it's a single tap every time.
         </p>
       </div>
       <div class="card">
-        <div class="stat__label">03 · Your exact NFTs</div>
+        <div class="stat__label">03 · Earn every second</div>
         <p class="muted" style="margin:0;font-size:0.88rem;line-height:1.6">
-          Specific token IDs go in and the identical IDs come back. The farm verifies delivery on
-          the way in, so a 404 reroll can never swap your rare.
+          Rewards build up second by second while your NFTs are in the air. Claim
+          them whenever you want.
         </p>
       </div>
       <div class="card">
-        <div class="stat__label">04 · Always exit-able</div>
+        <div class="stat__label">04 · Always yours</div>
         <p class="muted" style="margin:0;font-size:0.88rem;line-height:1.6">
-          Withdrawing and claiming can never be paused or blocked by the owner. Your NFTs are yours
-          on demand.
+          You get back the exact same NFTs you sent up, whenever you ask. Nobody can
+          keep them, and nobody can stop you claiming.
         </p>
       </div>
     </div>
@@ -208,8 +215,8 @@
         <div><span>reward</span> <span id="aReward">—</span></div>
       </div>
       <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-        <button class="btn btn--sm btn--ghost" id="changeFarmBtn">Change farm address</button>
-        <span class="muted">NFT Stake Farm</span>
+        <button class="btn btn--sm btn--ghost" id="changeFarmBtn">Change farm</button>
+        <span class="muted">Open Sky</span>
       </div>
     </div>
   </footer>

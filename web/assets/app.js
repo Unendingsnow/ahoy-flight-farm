@@ -38,26 +38,26 @@
     if (!A.hasWallet()) {
       host.appendChild(
         notice(
-          "<strong>No wallet detected.</strong> Install MetaMask (or any injected wallet) and reload to stake. " +
-            "You can still read the farm's numbers below once an address is configured.",
+          "<strong>No wallet found.</strong> Install MetaMask (or another browser wallet) and reload. " +
+            "You can still look around in the meantime.",
           "error"
         )
       );
       return;
     }
     if (!s.account) {
-      host.appendChild(notice("<strong>Wallet not connected.</strong> Connect to see your NFTs and rewards."));
+      host.appendChild(notice("<strong>Not connected yet.</strong> Connect your wallet and we'll find your NFTs for you."));
       return;
     }
     if (s.farmError) {
-      host.appendChild(notice(`<strong>${s.farmError}</strong> Use “Change farm address” below to point at the right one.`, "error"));
+      host.appendChild(notice(`<strong>${s.farmError}</strong> Use “Change farm” at the bottom to point somewhere else.`, "error"));
       return;
     }
     if (!s.farmAddress) {
       host.appendChild(
         notice(
-          `<strong>No farm configured for chain ${s.chainId}.</strong> ` +
-            `Deploy one (<code>npm run deploy:local</code>) or set the address with “Change farm address”.`,
+          `<strong>Nothing set up on this network.</strong> ` +
+            `Switch your wallet to the right network, or use “Change farm” at the bottom.`,
           "error"
         )
       );
@@ -68,31 +68,27 @@
     if (s.info.stakingToken_ === A.ZERO || s.info.rewardsToken_ === A.ZERO) {
       host.appendChild(
         notice(
-          "<strong>The farm isn't wired up yet.</strong> The owner still has to set the " +
-            (s.info.stakingToken_ === A.ZERO ? "NFT collection" : "") +
-            (s.info.stakingToken_ === A.ZERO && s.info.rewardsToken_ === A.ZERO ? " and the " : "") +
-            (s.info.rewardsToken_ === A.ZERO ? "reward token" : "") +
-            ". Staking is closed until then."
+          "<strong>Not open yet.</strong> The owner still has a little setup to finish, " +
+            "so sending NFTs up is closed for now."
         )
       );
       return;
     }
     if (s.info.paused_) {
       host.appendChild(
-        notice("<strong>New stakes are paused.</strong> Withdrawing and claiming stay open — your NFTs are never locked in.")
+        notice("<strong>Sending up is paused.</strong> You can still bring NFTs home and claim — they're never locked in.")
       );
     }
     if (!A.dripLive(s.info)) {
       host.appendChild(
-        notice("<strong>No drip is running right now.</strong> Staked NFTs accrue nothing until the owner starts the next window.")
+        notice("<strong>Rewards aren't running right now.</strong> Anything already up there will start earning again the moment they are.")
       );
     }
     if (ui.discoverMethod === "unsupported" && ui.stakedIds.length === 0) {
       host.appendChild(
         notice(
-          "<strong>Couldn't list your NFTs automatically.</strong> This collection doesn't expose a " +
-            "wallet-enumeration method the site recognises. Your staked NFTs are still shown, and staking by " +
-            "ID still works from a block explorer.",
+          "<strong>Couldn't load your NFTs just now.</strong> This is usually a network hiccup — " +
+            "refresh and try again. Anything already up there is still safe and still earning.",
           "error"
         )
       );
@@ -102,7 +98,9 @@
   // ----------------------------------------------------------- farm stats --
 
   function rewardSymbol() {
-    return (A.state.rewardMeta && A.state.rewardMeta.symbol) || "—";
+    // Empty rather than a dash: this sits directly beside the reward figure,
+    // where a placeholder reads as part of the number.
+    return (A.state.rewardMeta && A.state.rewardMeta.symbol) || "";
   }
   function rewardDecimals() {
     return (A.state.rewardMeta && A.state.rewardMeta.decimals) || 18;
@@ -123,23 +121,23 @@
 
     $("sTotalStaked").textContent = totalStaked.toString();
     $("sStakers").textContent =
-      info.stakerCount_ === 1n ? "1 pilot on the roster" : `${info.stakerCount_} pilots on the roster`;
+      info.stakerCount_ === 1n ? "1 person flying" : `${info.stakerCount_} people flying`;
 
     $("sPerDay").firstChild.nodeValue = live ? A.fmtCompact(perDay, dec) : "0";
     $("sPerDayUnit").textContent = sym;
     $("sPerApeDay").textContent =
       !live
-        ? "no active drip"
+        ? "paused right now"
         : totalStaked > 0n
-        ? `${A.fmt(perDay / totalStaked, dec, 4)} ${sym} per NFT / day`
-        : `${A.fmt(perDay, dec, 4)} ${sym} to the first NFT staked`;
+        ? `about ${A.fmt(perDay / totalStaked, dec, 4)} ${sym} each per day`
+        : `the first one up earns all ${A.fmt(perDay, dec, 4)} ${sym} a day`;
 
     $("sReserve").firstChild.nodeValue = A.fmtCompact(info.rewardBalance_, dec);
     $("sReserveUnit").textContent = sym;
-    $("sOwed").textContent = `${A.fmt(info.outstanding_, dec, 2)} ${sym} already earned by stakers`;
+    $("sOwed").textContent = `${A.fmt(info.outstanding_, dec, 2)} ${sym} already earned`;
 
     $("sRemaining").textContent = live ? A.countdown(info.periodFinish_) : "—";
-    $("sDuration").textContent = `window: ${A.duration(info.rewardsDuration_)}`;
+    $("sDuration").textContent = `runs for ${A.duration(info.rewardsDuration_)}`;
 
     // drip schedule
     const mine = s.user ? BigInt(s.user.staked.length) : 0n;
@@ -167,12 +165,12 @@
     tickEarned();
 
     $("rRate").textContent = !s.account
-      ? "Connect a wallet to see your stream."
+      ? "Connect your wallet to start earning."
       : mine === 0n
-      ? "Stake an NFT to open your stream."
+      ? "Send an NFT up and this starts counting straight away."
       : ui.perSecond > 0n
-      ? `Streaming ${A.fmt(ui.perSecond * 3600n, dec, 4)} ${sym} / hour to you right now.`
-      : "Your NFTs are staked, but no drip is running.";
+      ? `You're earning about ${A.fmt(ui.perSecond * 3600n, dec, 4)} ${sym} an hour.`
+      : "Your NFTs are up there, but rewards aren't running right now.";
 
     $("claimBtn").disabled = !s.account || ui.earnedBase === 0n;
     $("exitBtn").disabled = !s.account || (mine === 0n && ui.earnedBase === 0n);
@@ -204,7 +202,10 @@
     const btn = $("connectBtn");
     btn.textContent = A.shortAddr(s.account);
     btn.classList.remove("btn--primary");
-    $("heroConnect").textContent = "Jump to the vault";
+    $("heroConnect").textContent = "See my NFTs";
+    // The secondary link says the same thing once connected — drop it.
+    const heroAlt = document.querySelector('.hero__cta a[href="#vault"]');
+    if (heroAlt) heroAlt.classList.add("hidden");
   }
 
   // --------------------------------------------------------------- vault --
@@ -222,22 +223,42 @@
     return el;
   }
 
-  /** Fills in real artwork behind the placeholders, a few at a time. */
+  function tryLoad(src) {
+    return new Promise((resolve) => {
+      const probe = new Image();
+      probe.onload = () => resolve(true);
+      probe.onerror = () => resolve(false);
+      probe.src = src;
+    });
+  }
+
+  /**
+   * Swaps real artwork in behind the generated badges.
+   *
+   * One template probe up front resolves art for the entire collection, so this
+   * costs no per-NFT RPC. Each card then tries a lightweight thumbnail before
+   * the full-size original (which can be ~1MB), and silently keeps the badge if
+   * neither loads.
+   */
   async function hydrateArt(entries) {
+    if (!entries.length) return;
+    await A.resolveArtTemplate(entries[0].id);
+
     const queue = entries.slice();
     const worker = async () => {
       while (queue.length) {
         const { id, el } = queue.shift();
+        if (!el.isConnected) continue;
         const art = await A.tokenArt(id);
-        if (!art.generated && el.isConnected) {
-          const img = el.querySelector("img");
-          const probe = new Image();
-          probe.onload = () => { img.src = art.image; };
-          probe.src = art.image;
+        if (art.generated) continue;
+        const img = el.querySelector("img");
+        if (!img) continue;
+        for (const src of [A.thumb(art.image), art.image]) {
+          if (await tryLoad(src)) { img.src = src; break; }
         }
       }
     };
-    await Promise.all([worker(), worker(), worker(), worker()]);
+    await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
   }
 
   function renderHangar() {
@@ -248,8 +269,8 @@
     stakedGrid.innerHTML = "";
 
     if (!s.account || !s.nft) {
-      freeGrid.appendChild(emptyBox("Connect your wallet to see your NFTs."));
-      stakedGrid.appendChild(emptyBox("Nothing staked."));
+      freeGrid.appendChild(emptyBox("Connect your wallet and your NFTs will show up here."));
+      stakedGrid.appendChild(emptyBox("Nothing up here yet."));
       updateHangarButtons();
       return;
     }
@@ -276,7 +297,7 @@
         emptyBox(
           ui.discoverMethod === "unsupported"
             ? `Couldn't read this wallet's NFTs.${ui.discoverError ? " " + ui.discoverError : ""}`
-            : "No unstaked NFTs in this wallet."
+            : "Everything you own is already up in the air."
         )
       );
     } else {
@@ -290,7 +311,7 @@
     }
 
     if (ui.stakedIds.length === 0) {
-      stakedGrid.appendChild(emptyBox("No NFTs staked yet. Select some on the left and stake."));
+      stakedGrid.appendChild(emptyBox("Nothing up here yet. Send some up from the left and they'll start earning."));
     } else {
       const entries = [];
       for (const id of ui.stakedIds) {
@@ -324,22 +345,44 @@
   function updateHangarButtons() {
     const s = A.state;
     const canAct = Boolean(s.account && s.farm && s.nft);
-    const approved = Boolean(s.approved);
     const paused = Boolean(s.info && s.info.paused_);
 
-    $("approveBtn").hidden = !canAct || approved;
-    $("stakeBtn").disabled = !canAct || !approved || paused || ui.selFree.size === 0;
-    $("stakeBtn").textContent = paused
-      ? "Staking paused"
-      : ui.selFree.size > 0
-      ? `Stake ${ui.selFree.size} NFT${ui.selFree.size > 1 ? "s" : ""}`
-      : "Stake selected";
+    // Nothing picked means "everything" — the common case is one tap, and
+    // picking individual NFTs is the exception rather than a required step.
+    const nFree = ui.freeIds.length;
+    const pickedUp = ui.selFree.size;
+    const willSend = pickedUp || nFree;
 
-    $("withdrawBtn").disabled = !canAct || ui.selStaked.size === 0;
-    $("withdrawBtn").textContent =
-      ui.selStaked.size > 0
-        ? `Withdraw ${ui.selStaked.size} NFT${ui.selStaked.size > 1 ? "s" : ""}`
-        : "Withdraw selected";
+    const stakeBtn = $("stakeBtn");
+    stakeBtn.disabled = !canAct || paused || willSend === 0;
+    stakeBtn.textContent = paused
+      ? "Paused for now"
+      : willSend === 0
+      ? "Nothing to send up"
+      : pickedUp
+      ? `Send up ${pickedUp}`
+      : `Send up all ${nFree}`;
+
+    const nUp = ui.stakedIds.length;
+    const pickedDown = ui.selStaked.size;
+    const willBring = pickedDown || nUp;
+
+    const homeBtn = $("withdrawBtn");
+    homeBtn.disabled = !canAct || willBring === 0;
+    homeBtn.textContent =
+      willBring === 0
+        ? "Nothing up there yet"
+        : pickedDown
+        ? `Bring home ${pickedDown}`
+        : `Bring home all ${nUp}`;
+
+    const help = $("stakeHelp");
+    if (help) {
+      help.textContent =
+        canAct && !s.approved && nFree > 0
+          ? "First time only: your wallet asks for permission, then sends them up."
+          : "";
+    }
   }
 
   /** Reads the wallet's NFTs and splits them into free vs staked. */
@@ -379,17 +422,25 @@
 
   // --------------------------------------------------------------- actions --
 
-  async function doApprove() {
-    const s = A.state;
-    await A.tx("Approve farm", () => s.nft.setApprovalForAll(s.farmAddress, true));
-  }
-
+  /**
+   * One button does the whole thing. Approval is not a step the user should have
+   * to understand — if the farm isn't approved yet we ask for it and then send
+   * up in the same press, so the happy path is always "tap, confirm, done".
+   */
   async function doStake() {
-    const ids = [...ui.selFree];
+    const s = A.state;
+    const ids = ui.selFree.size ? [...ui.selFree] : [...ui.freeIds];
     if (!ids.length) return;
-    const ok = await A.tx(`Stake ${ids.length} NFT${ids.length > 1 ? "s" : ""}`, () =>
-      A.state.farm.stake(ids)
-    );
+
+    if (!s.approved) {
+      const allowed = await A.tx("Allowing the farm", () =>
+        s.nft.setApprovalForAll(s.farmAddress, true)
+      );
+      if (!allowed) return; // rejected or failed — the toast already said so
+      s.approved = true;
+    }
+
+    const ok = await A.tx(`Sending up ${ids.length}`, () => s.farm.stake(ids));
     if (ok) ui.selFree.clear();
     // Ownership just changed — the cached ownerOf sweep is now stale.
     A.invalidateOwnerSweep();
@@ -397,22 +448,20 @@
   }
 
   async function doWithdraw() {
-    const ids = [...ui.selStaked];
+    const ids = ui.selStaked.size ? [...ui.selStaked] : [...ui.stakedIds];
     if (!ids.length) return;
-    const ok = await A.tx(`Withdraw ${ids.length} NFT${ids.length > 1 ? "s" : ""}`, () =>
-      A.state.farm.withdraw(ids)
-    );
+    const ok = await A.tx(`Bringing home ${ids.length}`, () => A.state.farm.withdraw(ids));
     if (ok) ui.selStaked.clear();
     A.invalidateOwnerSweep();
     await loadApes();
   }
 
   async function doClaim() {
-    await A.tx("Claim rewards", () => A.state.farm.getReward());
+    await A.tx("Claiming rewards", () => A.state.farm.getReward());
   }
 
   async function doExit() {
-    await A.tx("Exit", () => A.state.farm.exit());
+    await A.tx("Bringing everything home", () => A.state.farm.exit());
     A.invalidateOwnerSweep();
     await loadApes();
   }
@@ -474,7 +523,6 @@
       $("notices").scrollIntoView({ behavior: "smooth", block: "center" });
     };
 
-    $("approveBtn").onclick = doApprove;
     $("stakeBtn").onclick = doStake;
     $("withdrawBtn").onclick = doWithdraw;
     $("claimBtn").onclick = doClaim;
@@ -520,5 +568,12 @@
     }, 1000);
   }
 
-  document.addEventListener("DOMContentLoaded", boot);
+  // Bind to DOMContentLoaded only if it hasn't already fired — otherwise the
+  // listener never runs and the page sits dead. Matters whenever the script is
+  // loaded late (defer/async, injected, or bfcache restore).
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
 })();

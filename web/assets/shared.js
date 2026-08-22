@@ -536,11 +536,105 @@
    * Best-effort art lookup: tokenURI -> metadata JSON -> image. Any failure
    * (no gateway, dead host, CORS, local mock URI) falls back to the badge.
    */
+  /**
+   * Thumbnail proxy. The live collection's PNGs are 300KB–1MB each, which is far
+   * too heavy for a grid, so full-size art is only ever a fallback.
+   * Degrades safely: if the proxy is unreachable the card falls back to the
+   * original URL, then to the generated badge.
+   */
+  Farm.thumb = function (url, w = 320) {
+    if (!url || url.startsWith("data:")) return url;
+    return "https://wsrv.nl/?url=" + encodeURIComponent(url) + "&w=" + w + "&output=webp&q=78";
+  };
+
+  /**
+   * Most collections serve art at a path derivable from tokenURI, e.g.
+   *   .../metadata/1890.json  ->  .../images/1890.png
+   *
+   * Where that holds we can render every card with ZERO extra RPC calls and ZERO
+   * metadata fetches: probe the shape ONCE against a single token, then template
+   * the rest. That is the difference between one request and two-per-NFT, and it
+   * is what makes a wallet full of NFTs appear instantly instead of trickling in.
+   *
+   * undefined = not probed yet, null = no usable template (fall back per token).
+   */
+  let artTemplate;
+
+  function loadsAsImage(url, timeoutMs = 9000) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      let done = false;
+      const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      img.onload = () => { clearTimeout(timer); finish(true); };
+      img.onerror = () => { clearTimeout(timer); finish(false); };
+      img.src = url;
+    });
+  }
+
+  /** Builds candidate image URLs from a tokenURI that embeds the id. */
+  function templateFrom(uri, id) {
+    const out = [];
+    const sid = String(id);
+    // .../metadata/<id>.json -> .../images/<id>.<ext>
+    if (uri.includes("/metadata/")) {
+      for (const ext of ["png", "jpg", "jpeg", "webp", "gif"]) {
+        out.push(uri.replace("/metadata/", "/images/").replace(/.json$/i, "." + ext));
+      }
+    }
+    // .../<id>.json -> .../<id>.<ext>  (same directory)
+    if (/.json$/i.test(uri)) {
+      for (const ext of ["png", "jpg", "webp"]) out.push(uri.replace(/.json$/i, "." + ext));
+    }
+    return out.filter((u) => u.includes(sid));
+  }
+
+  Farm.resolveArtTemplate = async function (sampleId) {
+    if (artTemplate !== undefined) return artTemplate;
+    artTemplate = null;
+    const nft = Farm.state.nft;
+    if (!nft || sampleId === undefined) return artTemplate;
+
+    try {
+      const uri = ipfsToHttp(await nft.tokenURI(sampleId));
+      if (!uri || uri.startsWith("data:")) return artTemplate;
+
+      for (const candidate of templateFrom(uri, sampleId)) {
+        if (await loadsAsImage(Farm.thumb(candidate))) {
+          // Store the shape with the id replaced by a placeholder token.
+          artTemplate = candidate.split(String(sampleId)).join("{id}");
+          break;
+        }
+      }
+    } catch {
+      /* leave null — per-token metadata still works */
+    }
+    return artTemplate;
+  };
+
+  /** Image URL for an id straight from the template, or null. */
+  Farm.templatedArt = function (id) {
+    if (!artTemplate) return null;
+    return artTemplate.split("{id}").join(String(id));
+  };
+
+  /**
+   * Resolve art for one token. Order: template (free) -> metadata fetch ->
+   * generated badge. Always returns something renderable.
+   */
   Farm.tokenArt = async function (id) {
     if (metaCache.has(id)) return metaCache.get(id);
-    const fallback = { image: Farm.placeholderArt(id), name: `NFT #${id}`, generated: true };
-    metaCache.set(id, fallback);
 
+    const fallback = { image: Farm.placeholderArt(id), name: `#${id}`, generated: true };
+
+    const templated = Farm.templatedArt(id);
+    if (templated) {
+      const hit = { image: templated, name: `#${id}`, generated: false };
+      metaCache.set(id, hit);
+      return hit;
+    }
+
+    metaCache.set(id, fallback);
     const nft = Farm.state.nft;
     if (!nft) return fallback;
 
@@ -563,11 +657,12 @@
 
       const image = ipfsToHttp(meta.image || meta.image_url);
       if (!image) return fallback;
-      const resolved = { image, name: meta.name || `NFT #${id}`, generated: false };
+      const resolved = { image, name: meta.name || `#${id}`, generated: false };
       metaCache.set(id, resolved);
       return resolved;
     } catch {
       return fallback;
     }
   };
+
 })();

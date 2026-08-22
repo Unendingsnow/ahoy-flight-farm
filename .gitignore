@@ -70,3 +70,6 @@ desktop.ini
 .idea/
 *.swp
 *~
+
+# Local preview/scratch pages
+web/_*
