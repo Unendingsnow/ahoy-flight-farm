@@ -131,7 +131,6 @@
     const dec = rewardDecimals();
     const sym = rewardSymbol();
 
-    $("aFarm").textContent = s.farmAddress || "not configured";
     if (!info) return;
 
     const totalStaked = info.totalStaked_;
@@ -172,9 +171,6 @@
     $("fRewardToken").textContent = s.rewardMeta ? `${s.rewardMeta.symbol} · ${A.shortAddr(info.rewardsToken_)}` : "—";
     $("fNftToken").textContent = s.nftMeta ? `${s.nftMeta.symbol} · ${A.shortAddr(info.stakingToken_)}` : "—";
     $("fEnds").textContent = live ? new Date(Number(info.periodFinish_) * 1000).toLocaleDateString() : "—";
-
-    $("aNft").textContent = info.stakingToken_ === A.ZERO ? "not set" : info.stakingToken_;
-    $("aReward").textContent = info.rewardsToken_ === A.ZERO ? "not set" : info.rewardsToken_;
 
     // reward panel
     $("rSymbol").textContent = sym;
@@ -219,7 +215,10 @@
     }
     pill.classList.remove("hidden");
     const ok = Boolean(s.farmAddress) && !s.farmError;
-    pill.className = "pill " + (ok ? "pill--ok" : "pill--warn");
+    // pill--urgent survives the phone media query: on the wrong chain this is
+    // not a status badge, it is one of the ways back.
+    pill.className =
+      "pill " + (ok ? "pill--ok" : "pill--warn") + (A.wrongNetwork() ? " pill--urgent" : "");
 
     // The pill is in the sticky nav, so it is the one thing a scrolled-down
     // user can always see — make it say what is wrong, and fix it on click.
@@ -568,11 +567,17 @@
       renderAll();
     });
 
+    // Fill the farm figures for everyone first — the page should never greet a
+    // visitor with a screen of dashes — then upgrade to the wallet if one is
+    // already authorised.
+    await A.connectReadOnly();
     const connected = await A.autoConnect();
     if (connected) await loadApes();
 
-    // Live counter between polls, and a real re-read every 15s.
-    setInterval(tickEarned, 250);
+    // Live counter between polls, and a real re-read every 15s. A number
+    // churning four times a second is exactly the motion reduced-motion means.
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setInterval(tickEarned, calm ? 1000 : 250);
     setInterval(() => {
       if (A.state.farm) A.refresh();
     }, 15000);

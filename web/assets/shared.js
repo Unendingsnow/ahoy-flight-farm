@@ -176,10 +176,17 @@
     if (!toastHost) {
       toastHost = document.createElement("div");
       toastHost.className = "toast-host";
+      // A toast is the only confirmation that a stake, claim or withdrawal
+      // landed. Without this it is announced to sighted users only.
+      toastHost.setAttribute("role", "status");
+      toastHost.setAttribute("aria-live", "polite");
       document.body.appendChild(toastHost);
     }
     const el = document.createElement("div");
     el.className = `toast toast--${kind}`;
+    // A failed transaction should interrupt rather than queue behind whatever
+    // the screen reader is currently saying.
+    if (kind === "error") el.setAttribute("role", "alert");
     el.innerHTML = `<span class="toast__dot"></span><span class="toast__msg"></span>`;
     el.querySelector(".toast__msg").textContent = message;
     toastHost.appendChild(el);
@@ -530,7 +537,23 @@
         resolve(result);
       }
       function onKey(ev) {
-        if (ev.key === "Escape") done(null);
+        if (ev.key === "Escape") return done(null);
+        if (ev.key !== "Tab") return;
+
+        // Keep Tab inside the dialog. aria-modal tells a screen reader the rest
+        // of the page is inert; without this the keyboard disagrees with it.
+        const stops = back.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])");
+        if (stops.length === 0) return;
+        const first = stops[0];
+        const last = stops[stops.length - 1];
+        const on = document.activeElement;
+        if (ev.shiftKey && (on === first || !back.contains(on))) {
+          ev.preventDefault();
+          last.focus();
+        } else if (!ev.shiftKey && (on === last || !back.contains(on))) {
+          ev.preventDefault();
+          first.focus();
+        }
       }
 
       back.addEventListener("click", (ev) => {
@@ -672,6 +695,39 @@
     }
   };
 
+  /**
+   * Read the farm with no wallet at all.
+   *
+   * Everything on the page except "your NFTs" is public information, and the
+   * RPC to fetch it has been sitting in config.js the whole time. Without this
+   * a first-time visitor is asked to connect a wallet before the site will show
+   * them whether the farm is even running — which is the wrong way round.
+   *
+   * Safe to call before autoConnect: a wallet connecting afterwards simply
+   * replaces the provider and re-reads.
+   */
+  Farm.connectReadOnly = async function () {
+    const s = Farm.state;
+    if (s.account) return true; // a wallet already won
+
+    const target = Farm.defaultChainId();
+    const net = target ? networkConfig(target) : null;
+    if (!net || !net.rpc) return false;
+
+    try {
+      s.provider = new E.JsonRpcProvider(net.rpc, target);
+      s.chainId = target;
+      await Farm.loadContracts();
+      await Farm.refresh();
+      return Boolean(s.farm);
+    } catch (err) {
+      // A dead RPC must not take the page down with it — the wallet path still
+      // works, and the figures simply stay blank as they did before.
+      console.warn("read-only load failed", err);
+      return false;
+    }
+  };
+
   /** Reconnects silently if a wallet is already authorised for this site. */
   Farm.autoConnect = async function () {
     const list = Farm.wallets();
@@ -739,8 +795,11 @@
   Farm.loadContracts = async function () {
     const s = Farm.state;
     const abi = window.FARM_ABI;
+    // A signer when there is a wallet, the plain provider when there is not —
+    // every read below works either way, and only writes need the signer.
+    const runner = s.signer || s.provider;
     s.farmAddress = resolveFarmAddress(s.chainId);
-    s.farm = s.farmAddress ? new E.Contract(s.farmAddress, abi.farm, s.signer) : null;
+    s.farm = s.farmAddress ? new E.Contract(s.farmAddress, abi.farm, runner) : null;
     s.nft = null;
     s.nftAddress = null;
     s.reward = null;
@@ -762,12 +821,12 @@
     s.info = info;
 
     if (info.stakingToken_ !== ZERO) {
-      s.nft = new E.Contract(info.stakingToken_, abi.nft, s.signer);
+      s.nft = new E.Contract(info.stakingToken_, abi.nft, runner);
       s.nftAddress = info.stakingToken_;
       s.nftMeta = await readTokenMeta(s.nft, { name: "NFT Collection", symbol: "NFT" });
     }
     if (info.rewardsToken_ !== ZERO) {
-      s.reward = new E.Contract(info.rewardsToken_, abi.erc20, s.signer);
+      s.reward = new E.Contract(info.rewardsToken_, abi.erc20, runner);
       s.rewardMeta = await readTokenMeta(s.reward, { name: "Reward", symbol: "RWD", decimals: 18 });
     }
   };
