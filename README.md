@@ -113,6 +113,7 @@ keeps that path under test even though the live collection is a plain ERC-721.
 | `notifyRewardAmount` | Rate must be covered by `balance − outstanding`. Claims can never bounce. |
 | `addToDrip` | Capped at `unallocatedRewards()`; same solvency rule against the time left. Reverts rather than no-op when the amount is too small to move the rate. |
 | `recoverERC20` | Never the staking token. The reward token only down to `unallocatedRewards()`. |
+| `emergencyUnstake` | Destination is read from `stakerOf[id]`, never a parameter — the owner can evict, never seize. Touches no reward tokens, so a broken reward token cannot block a rescue. |
 | `recoverERC721` | Never a staked token. |
 | `setStakingPaused` | Blocks new stakes only. Withdraw and claim always work. |
 
@@ -250,6 +251,7 @@ npm run battletest    # 61 assertions against real contracts on a mainnet fork
 | `invariants.test.js` | Randomised multi-actor soak, re-checking every invariant after **each** step. |
 | `plainErc721.test.js` | The farm against a plain, non-enumerable ERC-721 — **the live shape**, including that the collection really lacks every enumeration method the site probes for. |
 | `burnToken.test.js` | The fixed-supply self-burning ERC-20 test double. |
+| `emergencyUnstake.test.js` | The failsafe: that it always gets people out, and that it can never be used to take anything. |
 | `addToDrip.test.js` | Recycling surplus into a live window: the end date holds, the rate rises by exactly `amount / remaining`, nothing is retroactive. |
 | `addToDripBattle.test.js` | Adversarial: randomised soak with top-ups, boundaries, fairness, griefing, and every interaction with the other owner controls. |
 
@@ -303,6 +305,9 @@ FARM_SEED=42 FARM_ROUNDS=800 npx hardhat test test/invariants.test.js
 | `addToDrip(uint256)` | Recycle unallocated into the *running* window. `rate += amount / secondsLeft`; `periodFinish` never moves. |
 | `cancelDrip()` | Stop now. Earned stays owed; the rest becomes unallocated. |
 | `setStakingPaused(bool)` | New stakes only. |
+| `emergencyUnstake(address,uint256)` | Return one staker's NFTs **to them**. Requires staking paused. |
+| `emergencyUnstakeMany(address[],uint256)` | The same across a list of stakers. |
+| `disableEmergencyUnstake()` | Give up those powers permanently. One-way. |
 | `recoverERC20` / `recoverERC721` | Guarded as above. |
 
 **Views**

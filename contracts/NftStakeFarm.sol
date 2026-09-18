@@ -140,6 +140,8 @@ contract NftStakeFarm is Ownable, ReentrancyGuard {
     event StakingPausedUpdated(bool paused);
     event RecoveredERC20(address indexed token, uint256 amount, address indexed to);
     event RecoveredERC721(address indexed token, uint256 tokenId, address indexed to);
+    event EmergencyUnstaked(address indexed user, uint256[] tokenIds);
+    event EmergencyUnstakeDisabled();
 
     // ----------------------------------------------------------------------
     // Constructor
@@ -613,6 +615,97 @@ contract NftStakeFarm is Ownable, ReentrancyGuard {
     function setStakingPaused(bool paused) external onlyOwner {
         stakingPaused = paused;
         emit StakingPausedUpdated(paused);
+    }
+
+    // ----------------------------------------------------------------------
+    // Emergency unstake
+    // ----------------------------------------------------------------------
+
+    /**
+     * EVICT, NEVER SEIZE.
+     *
+     * The owner can push stakers out of the farm so a bug here can never trap
+     * anyone's NFT. The destination is always `stakerOf[id]` — it is read from
+     * storage, never passed in — so this returns property to its owner and can
+     * do nothing else. A compromised owner key can empty the farm; it cannot
+     * take a single NFT.
+     *
+     * Deliberately independent of the reward token: nothing is transferred but
+     * NFTs, and earned rewards are checkpointed into `rewards[]` for the staker
+     * to claim later. A reward token that is paused, blacklisting, or simply
+     * broken therefore cannot block the rescue — which is the whole point of
+     * having one.
+     *
+     * Staking must be paused first, so this is a declared emergency rather than
+     * something that can be done quietly, and nobody can re-stake into the farm
+     * being drained.
+     */
+
+    /// @notice Set once to give up these powers forever. One-way.
+    bool public emergencyUnstakeDisabled;
+
+    function _emergencyUnstake(address user, uint256 maxCount) internal returns (uint256 moved) {
+        _updateReward(user);
+
+        uint256[] storage list = _stakedList[user];
+        uint256 n = list.length;
+        if (n == 0) return 0;
+        if (maxCount == 0 || maxCount > n) maxCount = n;
+
+        INftCollection nft = stakingToken;
+        uint256[] memory ids = new uint256[](maxCount);
+        for (uint256 i = 0; i < maxCount; i++) {
+            // Take from the tail: with swap-pop removal that avoids the swap.
+            uint256 id = list[list.length - 1];
+            ids[i] = id;
+            _removeStake(user, id);
+            nft.transferFrom(address(this), user, id);
+        }
+
+        totalStaked -= maxCount;
+        if (list.length == 0) stakerCount -= 1;
+        emit EmergencyUnstaked(user, ids);
+        return maxCount;
+    }
+
+    /**
+     * @notice Return one staker's NFTs to them and clear their stake.
+     * @param maxCount Cap on how many to move in this call, so a wallet holding
+     *                 hundreds cannot exceed the block gas limit. 0 means all.
+     */
+    function emergencyUnstake(address user, uint256 maxCount) external onlyOwner nonReentrant {
+        require(!emergencyUnstakeDisabled, "Emergency unstake disabled");
+        require(stakingPaused, "Pause staking first");
+        require(_emergencyUnstake(user, maxCount) > 0, "Nothing staked");
+    }
+
+    /**
+     * @notice The same, across a list of stakers. Addresses come from the
+     *         `Staked` event log — the farm keeps no enumerable staker set, so
+     *         that stays off-chain rather than taxing every stake and withdraw.
+     *         Wallets with nothing staked are skipped, so the list can be stale.
+     */
+    function emergencyUnstakeMany(address[] calldata users, uint256 maxPerUser)
+        external
+        onlyOwner
+        nonReentrant
+    {
+        require(!emergencyUnstakeDisabled, "Emergency unstake disabled");
+        require(stakingPaused, "Pause staking first");
+        require(users.length > 0, "No users");
+        for (uint256 i = 0; i < users.length; i++) {
+            _emergencyUnstake(users[i], maxPerUser);
+        }
+    }
+
+    /**
+     * @notice Give up the emergency powers permanently. Irreversible.
+     *         Once the farm has proven itself, this is how the owner proves
+     *         they cannot touch a staked NFT ever again.
+     */
+    function disableEmergencyUnstake() external onlyOwner {
+        emergencyUnstakeDisabled = true;
+        emit EmergencyUnstakeDisabled();
     }
 
     // ----------------------------------------------------------------------
