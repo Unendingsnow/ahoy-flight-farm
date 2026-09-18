@@ -486,6 +486,13 @@
         `<button class="wallet-modal__x" type="button" aria-label="Close">×</button>` +
         `</div>` +
         `<div class="wallet-modal__body">` +
+        (list.length
+          ? `<div class="wallet-modal__count">${
+              list.length === 1
+                ? "1 wallet on this browser"
+                : `${list.length} wallets on this browser — pick one`
+            }</div>`
+          : "") +
         `<div class="wallet-modal__list"></div>` +
         `<div class="wallet-modal__phone"></div>` +
         (list.length
@@ -516,6 +523,8 @@
 
       function done(result) {
         document.removeEventListener("keydown", onKey);
+        // Let the page's blurred clouds paint again.
+        document.documentElement.classList.remove("wallet-modal-open");
         back.remove();
         chooserOpen = null;
         resolve(result);
@@ -530,6 +539,9 @@
       back.querySelector(".wallet-modal__x").addEventListener("click", () => done(null));
       document.addEventListener("keydown", onKey);
 
+      // Stop the page's five blurred clouds repainting behind the scrim while
+      // the pass is open — they are invisible and only cost frames.
+      document.documentElement.classList.add("wallet-modal-open");
       document.body.appendChild(back);
       const first = listEl.querySelector(".wallet-opt");
       if (first) first.focus();

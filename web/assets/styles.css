@@ -223,14 +223,20 @@ a { color: inherit; }
 .right { text-align: right; }
 
 /* ------------------------------------------------------------------- cards */
+/*
+ * Frosted, but not ruinously so. Every one of these re-computes its blur on
+ * each frame that the clouds move behind it, and index.html carries a dozen —
+ * so the radius is the single most expensive number on the page. 10px reads
+ * the same as 16px over a soft gradient and costs noticeably less.
+ */
 .card {
   background: var(--card);
   border: 1px solid var(--card-line);
   border-radius: var(--r-lg);
   padding: 1.25rem 1.35rem;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(16px) saturate(1.35);
-  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  backdrop-filter: blur(10px) saturate(1.3);
+  -webkit-backdrop-filter: blur(10px) saturate(1.3);
 }
 
 .card--feature {
@@ -253,8 +259,8 @@ a { color: inherit; }
   z-index: 40;
   padding: 0.75rem 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 @media (prefers-color-scheme: dark) {
   .nav { background: linear-gradient(180deg, rgba(7, 15, 38, 0.72), transparent); }
@@ -711,13 +717,25 @@ a { color: inherit; }
   display: grid;
   place-items: center;
   padding: 1.2rem;
-  background: rgba(8, 30, 45, 0.5);
-  backdrop-filter: blur(6px) saturate(115%);
+  /* Deliberately NO backdrop-filter. The page animates five clouds that each
+     carry a blur filter, so a full-screen backdrop blur makes the browser
+     re-rasterise every moving cloud AND re-blur the whole viewport on every
+     frame. An opaque scrim reads the same and costs nothing. */
+  background: rgba(8, 30, 45, 0.72);
   animation: wmFade 0.22s ease-out;
 }
 @keyframes wmFade { from { opacity: 0; } }
 
+/* Same reason: while the pass is open the clouds are behind a scrim and only
+   burning frames. Stop painting them entirely. */
+html.wallet-modal-open .clouds { visibility: hidden; }
+
 .wallet-modal__box {
+  /* Rows need their own surface: --card is 74%-white, which on the white body
+     left them reading as blank space with a 9%-opacity hairline. */
+  --row: var(--sky-4);
+  --row-edge: rgba(43, 143, 216, 0.3);
+
   position: relative;
   width: min(392px, 100%);
   max-height: min(86vh, 720px);
@@ -761,7 +779,6 @@ a { color: inherit; }
   height: 13px;
   border-radius: 99px;
   background: var(--cloud-soft);
-  filter: blur(0.3px);
 }
 .wallet-modal__cloud::before {
   content: "";
@@ -847,6 +864,14 @@ a { color: inherit; }
   background-size: 51% 100%;
   background-repeat: no-repeat;
 }
+.wallet-modal__count {
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--ink-3);
+  margin-bottom: 0.55rem;
+}
 .wallet-modal__list { display: grid; gap: 0.5rem; }
 .wallet-modal__note {
   margin: 0.85rem 0 0;
@@ -862,10 +887,10 @@ a { color: inherit; }
   align-items: center;
   gap: 0.72rem;
   width: 100%;
-  padding: 0.66rem 0.8rem;
+  padding: 0.7rem 0.8rem;
   border-radius: var(--r-md);
-  border: 1px solid var(--card-edge);
-  background: var(--card);
+  border: 1.5px solid var(--row-edge);
+  background: var(--row);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -990,7 +1015,11 @@ a { color: inherit; }
 }
 
 @media (prefers-color-scheme: dark) {
-  .wallet-modal { background: rgba(3, 8, 20, 0.62); }
+  .wallet-modal { background: rgba(3, 8, 20, 0.78); }
+  .wallet-modal__box {
+    --row: rgba(255, 255, 255, 0.06);
+    --row-edge: rgba(255, 255, 255, 0.16);
+  }
   .wallet-opt__icon { background: linear-gradient(160deg, rgba(147, 72, 109, 0.35), rgba(22, 41, 90, 0.5)); }
   .wallet-opt__icon--blank { color: var(--ink); }
   .wallet-phone__stub { background: linear-gradient(180deg, rgba(75, 58, 116, 0.35), transparent 70%); }
@@ -1016,6 +1045,16 @@ a { color: inherit; }
 
 /* ------------------------------------------------------------- responsive */
 @media (max-width: 640px) {
+  /* Phones feel the frost cost most and notice it least — a dozen live blurs
+     is the difference between smooth scrolling and not. Swap to an opaque
+     card instead. */
+  .card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--card-solid);
+  }
+  .nav { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
   .wrap { width: min(1180px, 100% - 1.6rem); }
   .nav__inner { flex-wrap: wrap; row-gap: 0.5rem; }
   #netPill { display: none !important; }
