@@ -126,6 +126,7 @@ contract NftStakeFarm is Ownable, ReentrancyGuard {
     event Withdrawn(address indexed user, uint256[] tokenIds);
     event RewardPaid(address indexed user, uint256 reward);
     event RewardAdded(uint256 reward, uint256 rewardRate, uint256 periodFinish);
+    event DripToppedUp(uint256 amount, uint256 rewardRate, uint256 periodFinish);
     event RewardsDurationUpdated(uint256 newDuration);
     event Funded(address indexed from, uint256 amount);
     event DripCancelled(uint256 returnedToUnallocated);
@@ -486,6 +487,46 @@ contract NftStakeFarm is Ownable, ReentrancyGuard {
         lastUpdateTime = block.timestamp;
         periodFinish = block.timestamp + rewardsDuration;
         emit RewardAdded(reward, rewardRate, periodFinish);
+    }
+
+    /**
+     * @notice Fold unallocated reward into the CURRENT window, leaving
+     *         `periodFinish` exactly where it is.
+     *
+     *         This is the counterpart to `notifyRewardAmount`, which always
+     *         restarts a full `rewardsDuration` from the moment it is called —
+     *         fine when opening a window, wrong when you only want to recycle a
+     *         surplus. The classic source of that surplus is time the farm spent
+     *         with nothing staked: emissions keep running against the clock, no
+     *         one accrues them, and they land in `unallocatedRewards()`. Putting
+     *         them back through `notifyRewardAmount` would push the end date out
+     *         by however long the window has already been running.
+     *
+     *         Raises the rate for the remaining time only:
+     *         `rewardRate += amount / (periodFinish - now)`.
+     */
+    function addToDrip(uint256 amount) external onlyOwner updateReward(address(0)) {
+        require(address(rewardsToken) != address(0), "Reward token unset");
+        require(block.timestamp < periodFinish, "No active window");
+        require(amount > 0, "Nothing to add");
+        require(amount <= unallocatedRewards(), "Exceeds unallocated rewards");
+
+        uint256 remaining = periodFinish - block.timestamp;
+        // Integer division: an amount smaller than the seconds left cannot move
+        // the rate at all. Reverting beats reporting a top-up that did nothing.
+        uint256 rateDelta = amount / remaining;
+        require(rateDelta > 0, "Amount too small for window");
+        rewardRate += rateDelta;
+
+        // Same solvency rule as notifyRewardAmount, measured against the time
+        // actually left rather than a fresh full duration.
+        uint256 balance = rewardsToken.balanceOf(address(this));
+        uint256 owed = outstandingRewards();
+        uint256 available = balance > owed ? balance - owed : 0;
+        require(rewardRate <= available / remaining, "Provided reward too high");
+
+        lastUpdateTime = block.timestamp;
+        emit DripToppedUp(amount, rewardRate, periodFinish);
     }
 
     /**

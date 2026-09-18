@@ -23,6 +23,10 @@ const { TARGETS, MULTICALL3, durationSeconds } = require("./targets");
 const CHAIN = 369;
 const T = TARGETS[CHAIN];
 
+// The deployed v1 farm — on a fork it is the deepest FLIGHT pocket around, and
+// borrowing from it costs nothing because the fork is thrown away.
+const LIVE_FARM = "0x71432b22a63F0f14CA43e00fc269809D3570AC00";
+
 const ERC20 = [
   "function name() view returns (string)",
   "function symbol() view returns (string)",
@@ -61,7 +65,9 @@ function section(t) { console.log(`\n--- ${t} ---`); }
 const E = (n) => ethers.parseEther(String(n));
 const f = (v, d = 18) => Number(ethers.formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: 6 });
 
-async function impersonate(addr, pls = "10000") {
+// 1M PLS of fork-only funny money: PulseChain basefee at the fork block varies
+// run to run, and 10k was not always enough to cover an approve + stake.
+async function impersonate(addr, pls = "1000000") {
   await hre.network.provider.request({ method: "hardhat_impersonateAccount", params: [addr] });
   await hre.network.provider.send("hardhat_setBalance", [
     addr, "0x" + ethers.parseEther(pls).toString(16),
@@ -206,6 +212,29 @@ async function main() {
   // ------------------------------------------------------------------ fund --
   section(`Fund ${T.budget.toLocaleString()} ${sym} — measuring real transfer tax`);
   const budget = ethers.parseUnits(String(T.budget), dec);
+
+  // The live farm already holds the real budget, so on a fork of today's chain
+  // the deployer no longer has it to spend. Borrow the shortfall from the
+  // biggest holder — fork-only, and it keeps the rehearsal at full scale
+  // instead of silently testing a smaller number than we will deploy.
+  let onHand = await rwd.balanceOf(deployer.address);
+  if (onHand < budget) {
+    const short = budget - onHand;
+    // Fork gas is priced off the real chain, so the impersonated account needs a
+    // real PLS balance to send anything at all.
+    const whale = await impersonate(T.rewardWhale || LIVE_FARM, "10000000");
+    const whaleBal = await rwd.balanceOf(await whale.getAddress());
+    check(`whale can cover the ${f(short, dec)} ${sym} shortfall`, whaleBal >= short);
+
+    // Send 10% over: if this token taxes transfers, the shortfall would arrive
+    // short and the rehearsal would quietly run at less than full scale.
+    const send = (short * 110n) / 100n > whaleBal ? whaleBal : (short * 110n) / 100n;
+    await (await rwd.connect(whale).transfer(deployer.address, send)).wait();
+    onHand = await rwd.balanceOf(deployer.address);
+    console.log(`  topped the deployer up by ${f(onHand - (budget - short), dec)} ${sym} (fork only)`);
+  }
+  check("deployer holds the full budget", onHand >= budget);
+
   const walletBefore = await rwd.balanceOf(deployer.address);
   await (await rwd.connect(deployer).approve(farmAddr, budget)).wait();
   await (await farm.connect(deployer).fund(budget)).wait();
@@ -327,6 +356,53 @@ async function main() {
   check("claimed <= funded", claimed <= farmGot);
   check("nothing stranded: unallocated is consistent",
     (await farm.unallocatedRewards()) === (bal > outstanding + scheduled ? bal - outstanding - scheduled : 0n));
+
+  // --------------------------------------------------- recycle the surplus --
+  // The farm has just sat empty (everyone exited above), so the stream has been
+  // running against the clock with nobody to accrue it. That is exactly the
+  // surplus addToDrip exists to put back — measured here against the REAL
+  // reward token, whose balanceOf the solvency check reads.
+  section("addToDrip — recycle idle-time surplus, end date unmoved");
+  await jump(14 * 86400);
+  await (await nft.connect(alice).setApprovalForAll(farmAddr, true)).wait();
+  await (await farm.connect(alice).stake([aliceIds[0]])).wait();
+
+  const surplus = await farm.unallocatedRewards();
+  const finishBefore = await farm.periodFinish();
+  const rateBefore = await farm.rewardRate();
+  const remaining = finishBefore - BigInt(await chainNow());
+  console.log(`  surplus ${f(surplus, dec)} ${sym} | ${remaining}s left on the window`);
+
+  check("idle time produced a surplus", surplus > 0n);
+  check("a dust top-up is refused rather than silently ignored",
+    await farm.connect(deployer).addToDrip(1n).then(() => false, () => true));
+  check("a non-owner cannot top up",
+    await farm.connect(alice).addToDrip(surplus).then(() => false, () => true));
+  check("cannot top up more than the surplus",
+    await farm.connect(deployer).addToDrip(surplus + E(1)).then(() => false, () => true));
+
+  const topUpRcpt = await (await farm.connect(deployer).addToDrip(surplus)).wait();
+  const rateAfter = await farm.rewardRate();
+  // The top-up mines its own block, so the contract divided by the remaining
+  // time AT THAT BLOCK — not the one measured a moment earlier.
+  const atBlock = BigInt((await ethers.provider.getBlock(topUpRcpt.blockNumber)).timestamp);
+  eq("periodFinish unmoved", await farm.periodFinish(), finishBefore);
+  check("rate rose", rateAfter > rateBefore);
+  eq("rate rose by exactly surplus/remaining",
+    rateAfter - rateBefore, surplus / (finishBefore - atBlock));
+  check("surplus consumed", (await farm.unallocatedRewards()) < E(1));
+  check("still solvent after the top-up",
+    (await farm.rewardBalance()) >= (await farm.outstandingRewards()) + (await farm.scheduledRewards()));
+  console.log(`  rate ${f(rateBefore, dec)} -> ${f(rateAfter, dec)} /s | gas ${topUpRcpt.gasUsed}`);
+
+  // And the raised rate is really paid out, on the real token.
+  const preAccrue = await farm.earned(aliceAddr);
+  await jump(86400);
+  const dayAfter = (await farm.earned(aliceAddr)) - preAccrue;
+  check("a day at the raised rate pays more than a day at the old one",
+    dayAfter > (rateBefore * 86400n * 95n) / 100n);
+  await (await farm.connect(alice).exit()).wait();
+  eq("NFT home after the top-up round", await nft.ownerOf(aliceIds[0]), aliceAddr);
 
   // --------------------------------------------------------- owner guards --
   section("Owner guards");

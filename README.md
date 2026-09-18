@@ -111,6 +111,7 @@ keeps that path under test even though the live collection is a plain ERC-721.
 | `setStakingToken` | Only while `totalStaked == 0` — nothing can be stranded behind a swapped address. |
 | `setRewardsToken` | Only while nothing is staked **and** no drip is running. Opens a new reward epoch. |
 | `notifyRewardAmount` | Rate must be covered by `balance − outstanding`. Claims can never bounce. |
+| `addToDrip` | Capped at `unallocatedRewards()`; same solvency rule against the time left. Reverts rather than no-op when the amount is too small to move the rate. |
 | `recoverERC20` | Never the staking token. The reward token only down to `unallocatedRewards()`. |
 | `recoverERC721` | Never a staked token. |
 | `setStakingPaused` | Blocks new stakes only. Withdraw and claim always work. |
@@ -249,6 +250,8 @@ npm run battletest    # 61 assertions against real contracts on a mainnet fork
 | `invariants.test.js` | Randomised multi-actor soak, re-checking every invariant after **each** step. |
 | `plainErc721.test.js` | The farm against a plain, non-enumerable ERC-721 — **the live shape**, including that the collection really lacks every enumeration method the site probes for. |
 | `burnToken.test.js` | The fixed-supply self-burning ERC-20 test double. |
+| `addToDrip.test.js` | Recycling surplus into a live window: the end date holds, the rate rises by exactly `amount / remaining`, nothing is retroactive. |
+| `addToDripBattle.test.js` | Adversarial: randomised soak with top-ups, boundaries, fairness, griefing, and every interaction with the other owner controls. |
 
 Invariants asserted continuously:
 
@@ -296,7 +299,8 @@ FARM_SEED=42 FARM_ROUNDS=800 npx hardhat test test/invariants.test.js
 | `setRewardsDuration(uint256)` | Only between windows. |
 | `fund(uint256)` | Anyone may call. Credits the amount actually received. |
 | `fundAndStart(uint256)` | Fund, then stream the whole unallocated balance. |
-| `notifyRewardAmount(uint256)` | Start/extend. Un-streamed remainder rolls into the new rate. |
+| `notifyRewardAmount(uint256)` | Start/extend. Un-streamed remainder rolls into the new rate. **Restarts a full `rewardsDuration` from the call.** |
+| `addToDrip(uint256)` | Recycle unallocated into the *running* window. `rate += amount / secondsLeft`; `periodFinish` never moves. |
 | `cancelDrip()` | Stop now. Earned stays owed; the rest becomes unallocated. |
 | `setStakingPaused(bool)` | New stakes only. |
 | `recoverERC20` / `recoverERC721` | Guarded as above. |
@@ -305,6 +309,10 @@ FARM_SEED=42 FARM_ROUNDS=800 npx hardhat test test/invariants.test.js
 
 `farmInfo()` returns everything the UI needs in one call. `outstandingRewards()`
 (earned, unclaimed — a hard liability), `scheduledRewards()` (promised to the
-rest of the window), `unallocatedRewards()` (free to re-notify or recover).
+rest of the window), `unallocatedRewards()` (free to re-notify, recycle with `addToDrip`, or recover).
+
+Any stretch with **nothing staked** emits against the clock with no one to accrue
+it, and that reward settles into `unallocatedRewards()`. `addToDrip` is how it
+goes back into the stream without pushing the end date out.
 
 > ⚠️ The `mocks/` contracts are test doubles. Never deploy them to production.
