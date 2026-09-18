@@ -51,7 +51,7 @@
       return;
     }
     if (s.farmError) {
-      host.appendChild(notice(`<strong>${s.farmError}</strong> Use “Change farm” at the bottom to point somewhere else.`, "error"));
+      host.appendChild(notice(`<strong>${s.farmError}</strong> Nothing is at risk — this is a configuration problem on our side.`, "error"));
       return;
     }
     if (!s.farmAddress) {
@@ -76,7 +76,7 @@
       host.appendChild(
         notice(
           `<strong>Nothing set up on this network.</strong> ` +
-            `Switch your wallet to the right network, or use “Change farm” at the bottom.`,
+            `Switch your wallet to ${A.networkName(A.defaultChainId())} to use the farm.`,
           "error"
         )
       );
@@ -512,46 +512,6 @@
     await loadApes();
   }
 
-  // ------------------------------------------------- change farm address UI --
-
-  function showFarmAddressForm() {
-    const host = $("notices");
-    if (document.getElementById("farmAddrForm")) return;
-    const box = document.createElement("div");
-    box.className = "card";
-    box.id = "farmAddrForm";
-    box.innerHTML = `
-      <div class="field">
-        <label for="farmAddrInput">Farm contract address</label>
-        <input id="farmAddrInput" type="text" spellcheck="false" placeholder="0x…"
-               value="${A.savedFarmAddress() || A.state.farmAddress || ""}">
-        <small>Stored in this browser only. Leave blank to fall back to the address in config.js.</small>
-      </div>
-      <div class="row row--tight">
-        <button class="btn btn--primary" id="farmAddrSave">Save &amp; reload</button>
-        <button class="btn btn--ghost" id="farmAddrCancel">Cancel</button>
-        ${A.wallets().length > 1 ? `<button class="btn btn--ghost" id="switchWalletBtn">Switch wallet</button>` : ""}
-      </div>`;
-    host.prepend(box);
-    $("farmAddrInput").focus();
-    $("farmAddrCancel").onclick = () => box.remove();
-    if ($("switchWalletBtn")) {
-      $("switchWalletBtn").onclick = () => {
-        box.remove();
-        connectThenLoad();
-      };
-    }
-    $("farmAddrSave").onclick = () => {
-      const v = $("farmAddrInput").value.trim();
-      if (v && !E.isAddress(v)) {
-        A.toast("That isn't a valid address.", "error");
-        return;
-      }
-      A.saveFarmAddress(v);
-      location.reload();
-    };
-  }
-
   // ----------------------------------------------------------------- boot --
 
   function renderAll() {
@@ -571,7 +531,8 @@
     // helps: get the wallet onto the farm's network.
     $("connectBtn").onclick = () => {
       if (A.wrongNetwork()) return switchToFarmNetwork();
-      return A.state.account ? showFarmAddressForm() : connectThenLoad();
+      // Connected: clicking your own address re-opens the wallet picker.
+      return connectThenLoad();
     };
     $("heroConnect").onclick = () => {
       if (A.wrongNetwork()) return switchToFarmNetwork();
@@ -579,11 +540,6 @@
         ? document.getElementById("vault").scrollIntoView({ behavior: "smooth" })
         : connectThenLoad();
     };
-    $("changeFarmBtn").onclick = () => {
-      showFarmAddressForm();
-      $("notices").scrollIntoView({ behavior: "smooth", block: "center" });
-    };
-
     $("stakeBtn").onclick = doStake;
     $("withdrawBtn").onclick = doWithdraw;
     $("claimBtn").onclick = doClaim;

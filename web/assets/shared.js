@@ -38,13 +38,25 @@
     return (cfg.networks && (cfg.networks[chainId] || cfg.networks[String(chainId)])) || null;
   }
 
-  /** Farm address: ?farm= in the URL wins, then a saved override, then config.js. */
-  function resolveFarmAddress(chainId) {
-    const qs = new URLSearchParams(location.search).get("farm");
-    if (qs && E.isAddress(qs)) return E.getAddress(qs);
+  /**
+   * Farm address. config.js is the only source the PUBLIC site will trust.
+   *
+   * `?farm=` and the saved override are owner tooling, and on a public page they
+   * are a phishing vector rather than a convenience: a crafted link, or a user
+   * talked into pasting an address, repoints the real branded UI at an
+   * attacker's farm — and the NFT approval that follows goes to them. So the
+   * overrides only apply where a page opts in, which is the owner panel.
+   */
+  Farm.allowFarmOverride = false;
 
-    const saved = localStorage.getItem(LS_FARM);
-    if (saved && E.isAddress(saved)) return E.getAddress(saved);
+  function resolveFarmAddress(chainId) {
+    if (Farm.allowFarmOverride) {
+      const qs = new URLSearchParams(location.search).get("farm");
+      if (qs && E.isAddress(qs)) return E.getAddress(qs);
+
+      const saved = localStorage.getItem(LS_FARM);
+      if (saved && E.isAddress(saved)) return E.getAddress(saved);
+    }
 
     const net = networkConfig(chainId);
     if (net && net.farm && E.isAddress(net.farm)) return E.getAddress(net.farm);
