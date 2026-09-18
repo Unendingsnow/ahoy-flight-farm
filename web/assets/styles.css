@@ -789,3 +789,41 @@ a { color: inherit; }
   .reward__actions .btn { flex: 1 1 100%; }
   .cloud--c, .cloud--e { display: none; }
 }
+
+/* ------------------------------------------------- phone wallets in picker */
+.wallet-modal__phone { margin-top: 0.9rem; }
+.wallet-phone__rule {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0.2rem 0 0.8rem;
+  color: var(--ink-3);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+}
+.wallet-phone__rule::before,
+.wallet-phone__rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--card-edge);
+}
+.wallet-phone__apps { display: grid; gap: 0.5rem; }
+.wallet-opt--app { text-decoration: none; }
+.wallet-phone__qr {
+  display: flex;
+  justify-content: center;
+  padding: 0.85rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--card-edge);
+  background: #fff;
+}
+.wallet-phone__qr svg { width: min(190px, 60vw); height: auto; display: block; }
+.wallet-phone__hint {
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  text-align: center;
+}

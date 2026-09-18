@@ -321,9 +321,140 @@
     "No wallet found. Install a browser wallet — MetaMask, Rabby, Brave, Coinbase, Trust, " +
     "or any other injected wallet — then reload.";
 
+  // -------------------------------------------------------- phone wallets --
+
+  /**
+   * Connecting a phone wallet, without WalletConnect.
+   *
+   * WalletConnect is not a protocol we could clone: the wallets implement it,
+   * pair through their relay, and will not speak anything else. What every one
+   * of them DOES have is an in-app browser that injects a provider — so instead
+   * of bridging a session to the desktop tab, we send the user into that
+   * browser, where the ordinary EIP-6963 path above works untouched.
+   *
+   * On a phone that is a deep link. On a desktop it is a QR of this page, which
+   * the phone camera opens. The trade is real and worth stating plainly: the
+   * user ends up transacting on their phone rather than in the desktop tab.
+   * In exchange there is no relay, no project id, and no third party.
+   */
+
+  const PHONE_WALLETS = [
+    {
+      name: "MetaMask",
+      // Wants host+path with no scheme.
+      link: (u) => `https://metamask.app.link/dapp/${u.host}${u.pathname}${u.search}`,
+    },
+    {
+      name: "Trust Wallet",
+      link: (u) => `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(u.href)}`,
+    },
+    {
+      name: "Coinbase Wallet",
+      link: (u) => `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(u.href)}`,
+    },
+  ];
+
+  /** Rough, and only ever used to choose which half of the panel to show. */
+  Farm.isPhone = function () {
+    return /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent || "");
+  };
+
+  /** Deep links into each wallet's in-app browser for the given page. */
+  Farm.phoneWallets = function (href) {
+    let u;
+    try {
+      u = new URL(href || location.href);
+    } catch {
+      return [];
+    }
+    // A deep link to localhost opens a browser on the phone that cannot reach
+    // this machine, which looks like the wallet is broken. Offer nothing.
+    if (/^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(u.hostname)) return [];
+    return PHONE_WALLETS.map((w) => ({ name: w.name, href: w.link(u) }));
+  };
+
+  /** QR of `text` as an <svg>, sized by CSS. Null if the encoder is absent. */
+  Farm.qrSvg = function (text) {
+    const qrcode = window.qrcode;
+    if (typeof qrcode !== "function") return null;
+    let q;
+    try {
+      q = qrcode(0, "M"); // 0 = smallest type that fits
+      q.addData(text);
+      q.make();
+    } catch {
+      return null;
+    }
+
+    const n = q.getModuleCount();
+    const quiet = 2;
+    const size = n + quiet * 2;
+    let path = "";
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (q.isDark(r, c)) path += `M${c + quiet},${r + quiet}h1v1h-1z`;
+      }
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+    svg.setAttribute("shape-rendering", "crispEdges");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "QR code linking to this page");
+    svg.innerHTML =
+      `<rect width="${size}" height="${size}" fill="#fff"/>` +
+      `<path d="${path}" fill="#0d3247"/>`;
+    return svg;
+  };
+
   // ------------------------------------------------------- wallet chooser --
 
   let chooserOpen = null;
+
+  /**
+   * The phone half of the picker. On a phone, buttons that open this page in a
+   * wallet's in-app browser. On a desktop, a QR of this page to scan. Renders
+   * nothing at all when there is nowhere useful to send someone (a localhost
+   * URL a phone could never reach, or no QR encoder loaded).
+   */
+  function buildPhoneSection(host, hasInjected) {
+    const links = Farm.phoneWallets();
+    if (links.length === 0) return;
+
+    const phone = Farm.isPhone();
+    if (!phone) {
+      const svg = Farm.qrSvg(location.href);
+      if (!svg) return; // desktop with no encoder: nothing worth showing
+      host.innerHTML =
+        `<div class="wallet-phone__rule"><span>${
+          hasInjected ? "or use a wallet on your phone" : "use a wallet on your phone"
+        }</span></div>` +
+        `<div class="wallet-phone__qr"></div>` +
+        `<p class="wallet-phone__hint">Scan with your phone camera, then open the link in your wallet app. You will approve and sign on the phone.</p>`;
+      host.querySelector(".wallet-phone__qr").appendChild(svg);
+      return;
+    }
+
+    host.innerHTML =
+      `<div class="wallet-phone__rule"><span>${
+        hasInjected ? "or open in a wallet app" : "open in a wallet app"
+      }</span></div>` +
+      `<div class="wallet-phone__apps"></div>` +
+      `<p class="wallet-phone__hint">This reopens the farm inside the wallet's own browser, where it can connect.</p>`;
+
+    const apps = host.querySelector(".wallet-phone__apps");
+    for (const l of links) {
+      const a = document.createElement("a");
+      a.className = "wallet-opt wallet-opt--app";
+      a.href = l.href;
+      a.rel = "noopener";
+      a.innerHTML =
+        `<span class="wallet-opt__icon wallet-opt__icon--blank">${l.name[0]}</span>` +
+        `<span class="wallet-opt__name"></span>` +
+        `<span class="wallet-opt__tag">open</span>`;
+      a.querySelector(".wallet-opt__name").textContent = l.name;
+      apps.appendChild(a);
+    }
+  }
 
   /** Modal list of every detected wallet. Resolves with a wallet, or null. */
   function chooseWallet(list) {
@@ -336,12 +467,17 @@
       back.innerHTML =
         `<div class="wallet-modal__box" role="dialog" aria-modal="true" aria-label="Choose a wallet">` +
         `<div class="wallet-modal__head">` +
-        `<h3 class="wallet-modal__title">Choose a wallet</h3>` +
+        `<h3 class="wallet-modal__title">${list.length ? "Choose a wallet" : "Connect a wallet"}</h3>` +
         `<button class="wallet-modal__x" type="button" aria-label="Close">×</button>` +
         `</div>` +
         `<div class="wallet-modal__list"></div>` +
-        `<p class="wallet-modal__note">Not listed? Unlock the extension, then reload the page.</p>` +
+        `<div class="wallet-modal__phone"></div>` +
+        (list.length
+          ? `<p class="wallet-modal__note">Not listed? Unlock the extension, then reload the page.</p>`
+          : "") +
         `</div>`;
+
+      buildPhoneSection(back.querySelector(".wallet-modal__phone"), list.length > 0);
 
       const listEl = back.querySelector(".wallet-modal__list");
       list.forEach((w) => {
@@ -476,11 +612,26 @@
    */
   Farm.connect = async function () {
     const list = Farm.wallets();
+    const hasPhoneRoute = Farm.phoneWallets().length > 0;
+
     if (list.length === 0) {
-      Farm.toast(NO_WALLET, "error", 9000);
+      // Nothing injected. On a phone that is the normal case in Safari/Chrome,
+      // and the panel's deep links are the way out; if there is no phone route
+      // either, there is genuinely nothing to offer.
+      if (!hasPhoneRoute) {
+        Farm.toast(NO_WALLET, "error", 9000);
+        return false;
+      }
+      await chooseWallet(list);
       return false;
     }
-    const entry = list.length === 1 ? list[0] : await chooseWallet(list);
+
+    // Exactly one wallet on a phone means we are already inside its in-app
+    // browser — connect straight through rather than offering to open the app
+    // we are standing in. On desktop the picker always opens, so the QR stays
+    // reachable even for someone with a single extension installed.
+    const skipPicker = list.length === 1 && (Farm.isPhone() || !hasPhoneRoute);
+    const entry = skipPicker ? list[0] : await chooseWallet(list);
     if (!entry) return false;
 
     try {
