@@ -426,10 +426,13 @@
       if (!svg) return; // desktop with no encoder: nothing worth showing
       host.innerHTML =
         `<div class="wallet-phone__rule"><span>${
-          hasInjected ? "or use a wallet on your phone" : "use a wallet on your phone"
+          hasInjected ? "or board from your phone" : "board from your phone"
         }</span></div>` +
+        `<div class="wallet-phone__stub">` +
+        `<div class="wallet-phone__stubhead"><span>Scan to board</span><span>Gate 369</span></div>` +
         `<div class="wallet-phone__qr"></div>` +
-        `<p class="wallet-phone__hint">Scan with your phone camera, then open the link in your wallet app. You will approve and sign on the phone.</p>`;
+        `<p class="wallet-phone__hint">Point your phone camera here, then open the farm in your wallet app. You'll approve and sign there.</p>` +
+        `</div>`;
       host.querySelector(".wallet-phone__qr").appendChild(svg);
       return;
     }
@@ -444,13 +447,13 @@
     const apps = host.querySelector(".wallet-phone__apps");
     for (const l of links) {
       const a = document.createElement("a");
-      a.className = "wallet-opt wallet-opt--app";
+      a.className = "wallet-opt";
       a.href = l.href;
       a.rel = "noopener";
       a.innerHTML =
         `<span class="wallet-opt__icon wallet-opt__icon--blank">${l.name[0]}</span>` +
         `<span class="wallet-opt__name"></span>` +
-        `<span class="wallet-opt__tag">open</span>`;
+        `<span class="wallet-opt__go" aria-hidden="true">→</span>`;
       a.querySelector(".wallet-opt__name").textContent = l.name;
       apps.appendChild(a);
     }
@@ -467,14 +470,28 @@
       back.innerHTML =
         `<div class="wallet-modal__box" role="dialog" aria-modal="true" aria-label="Choose a wallet">` +
         `<div class="wallet-modal__head">` +
-        `<h3 class="wallet-modal__title">${list.length ? "Choose a wallet" : "Connect a wallet"}</h3>` +
+        `<div class="wallet-modal__sky" aria-hidden="true">` +
+        `<span class="wallet-modal__sun"></span>` +
+        `<span class="wallet-modal__cloud wallet-modal__cloud--a"></span>` +
+        `<span class="wallet-modal__cloud wallet-modal__cloud--b"></span>` +
+        `<svg class="wallet-modal__plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+        `stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">` +
+        `<path d="M10.2 2.6a1.6 1.6 0 0 1 3.1 0l1.1 6.1 6.6 3.6a1.2 1.2 0 0 1 .6 1v1.2l-7.6-1.9-.7 4.3 ` +
+        `2.4 1.9v1.4l-3.9-1-3.9 1v-1.4l2.4-1.9-.7-4.3L2 14.5v-1.2a1.2 1.2 0 0 1 .6-1l6.6-3.6z"/></svg>` +
+        `</div>` +
+        `<div class="wallet-modal__heading">` +
+        `<span class="wallet-modal__eyebrow">Now boarding</span>` +
+        `<h3 class="wallet-modal__title">${list.length ? "Choose your wallet" : "Connect a wallet"}</h3>` +
+        `</div>` +
         `<button class="wallet-modal__x" type="button" aria-label="Close">×</button>` +
         `</div>` +
+        `<div class="wallet-modal__body">` +
         `<div class="wallet-modal__list"></div>` +
         `<div class="wallet-modal__phone"></div>` +
         (list.length
           ? `<p class="wallet-modal__note">Not listed? Unlock the extension, then reload the page.</p>`
           : "") +
+        `</div>` +
         `</div>`;
 
       buildPhoneSection(back.querySelector(".wallet-modal__phone"), list.length > 0);
@@ -490,7 +507,8 @@
         row.innerHTML =
           mark +
           `<span class="wallet-opt__name"></span>` +
-          (w.id === last ? `<span class="wallet-opt__tag">last used</span>` : "");
+          (w.id === last ? `<span class="wallet-opt__tag">last flight</span>` : "") +
+          `<span class="wallet-opt__go" aria-hidden="true">→</span>`;
         row.querySelector(".wallet-opt__name").textContent = w.name;
         row.addEventListener("click", () => done(w));
         listEl.appendChild(row);
