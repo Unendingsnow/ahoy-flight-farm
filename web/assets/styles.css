@@ -697,6 +697,86 @@ a { color: inherit; }
 }
 .addrs .mono { color: var(--ink); }
 
+
+/* ----------------------------------------------------------- wallet picker */
+.wallet-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  background: rgba(13, 50, 71, 0.42);
+  backdrop-filter: blur(3px);
+  animation: toastIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.wallet-modal__box {
+  width: min(400px, 100%);
+  max-height: min(78vh, 640px);
+  display: flex;
+  flex-direction: column;
+  padding: 1.1rem 1.15rem 1rem;
+  border-radius: var(--r-lg);
+  background: var(--card-solid);
+  border: 1px solid var(--card-edge);
+  box-shadow: var(--shadow-lg);
+}
+.wallet-modal__head { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.85rem; }
+.wallet-modal__title { font-size: 1.06rem; font-weight: 700; flex: 1; }
+.wallet-modal__x {
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  border-radius: var(--r-sm);
+}
+.wallet-modal__x:hover { color: var(--ink); }
+.wallet-modal__x:focus-visible { outline: none; box-shadow: var(--ring); }
+.wallet-modal__list { display: grid; gap: 0.5rem; overflow-y: auto; }
+.wallet-modal__note { margin-top: 0.9rem; font-size: 0.78rem; color: var(--ink-3); }
+
+.wallet-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--card-edge);
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.wallet-opt:hover { transform: translateY(-1.5px); border-color: var(--sun); box-shadow: var(--shadow); }
+.wallet-opt:focus-visible { outline: none; box-shadow: var(--ring); }
+.wallet-opt__icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--sky-4);
+}
+.wallet-opt__icon--blank {
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: var(--ink-2);
+}
+.wallet-opt__name { flex: 1; font-weight: 650; }
+.wallet-opt__tag {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  color: var(--ink-3);
+}
 /* ------------------------------------------------------------- responsive */
 @media (max-width: 640px) {
   .wrap { width: min(1180px, 100% - 1.6rem); }

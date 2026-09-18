@@ -38,7 +38,8 @@
     if (!A.hasWallet()) {
       host.appendChild(
         notice(
-          "<strong>No wallet found.</strong> Install MetaMask (or another browser wallet) and reload. " +
+          "<strong>No wallet found.</strong> Install any browser wallet — MetaMask, Rabby, Brave, " +
+            "Coinbase, Trust, or another injected wallet — and reload. " +
             "You can still look around in the meantime.",
           "error"
         )
@@ -54,6 +55,24 @@
       return;
     }
     if (!s.farmAddress) {
+      const target = A.defaultChainId();
+      if (A.wrongNetwork()) {
+        // By far the most common way to land here: the wallet is on whatever
+        // chain it opened with. Say which chain, and hand them the switch.
+        const el = notice(
+          `<strong>Wrong network.</strong> Your wallet is on ${A.networkName(s.chainId)}, ` +
+            `but this farm lives on ${A.networkName(target)}. Switch over and your NFTs will show up.`,
+          "error"
+        );
+        const btn = document.createElement("button");
+        btn.className = "btn btn--primary";
+        btn.style.marginTop = "0.6rem";
+        btn.textContent = `Switch to ${A.networkName(target)}`;
+        btn.onclick = () => switchToFarmNetwork();
+        el.querySelector("div").appendChild(btn);
+        host.appendChild(el);
+        return;
+      }
       host.appendChild(
         notice(
           `<strong>Nothing set up on this network.</strong> ` +
@@ -186,6 +205,11 @@
 
   // -------------------------------------------------------------- network --
 
+  // Declared, not assigned — renderNotices references it before this line runs.
+  function switchToFarmNetwork() {
+    return A.switchToFarm();
+  }
+
   function renderNetwork() {
     const s = A.state;
     const pill = $("netPill");
@@ -194,15 +218,29 @@
       return;
     }
     pill.classList.remove("hidden");
-    const net = A.networkConfig(s.chainId);
     const ok = Boolean(s.farmAddress) && !s.farmError;
     pill.className = "pill " + (ok ? "pill--ok" : "pill--warn");
-    $("netName").textContent = `${net ? net.name : "Chain " + s.chainId} · ${A.shortAddr(s.account)}`;
 
+    // The pill is in the sticky nav, so it is the one thing a scrolled-down
+    // user can always see — make it say what is wrong, and fix it on click.
+    if (A.wrongNetwork()) {
+      $("netName").textContent = `Wrong network — switch to ${A.networkName(A.defaultChainId())}`;
+      pill.style.cursor = "pointer";
+      pill.title = `Your wallet is on ${A.networkName(s.chainId)}. Click to switch.`;
+      pill.onclick = () => switchToFarmNetwork();
+    } else {
+      $("netName").textContent = `${A.networkName(s.chainId)} · ${A.shortAddr(s.account)}`;
+      pill.style.cursor = "";
+      pill.title = "";
+      pill.onclick = null;
+    }
+
+    const wrong = A.wrongNetwork();
     const btn = $("connectBtn");
-    btn.textContent = A.shortAddr(s.account);
-    btn.classList.remove("btn--primary");
-    $("heroConnect").textContent = "See my NFTs";
+    btn.textContent = wrong ? `Switch to ${A.networkName(A.defaultChainId())}` : A.shortAddr(s.account);
+    btn.title = s.wallet ? `${s.wallet.name} · ${s.account}` : s.account;
+    btn.classList.toggle("btn--primary", wrong);
+    $("heroConnect").textContent = wrong ? `Switch to ${A.networkName(A.defaultChainId())}` : "See my NFTs";
     // The secondary link says the same thing once connected — drop it.
     const heroAlt = document.querySelector('.hero__cta a[href="#vault"]');
     if (heroAlt) heroAlt.classList.add("hidden");
@@ -269,7 +307,15 @@
     stakedGrid.innerHTML = "";
 
     if (!s.account || !s.nft) {
-      freeGrid.appendChild(emptyBox("Connect your wallet and your NFTs will show up here."));
+      freeGrid.appendChild(
+        emptyBox(
+          A.wrongNetwork()
+            ? `Your wallet is on ${A.networkName(s.chainId)}. Switch to ${A.networkName(A.defaultChainId())} to see your NFTs.`
+            : s.account
+              ? "Nothing to show on this network."
+              : "Connect your wallet and your NFTs will show up here."
+        )
+      );
       stakedGrid.appendChild(emptyBox("Nothing up here yet."));
       updateHangarButtons();
       return;
@@ -484,10 +530,17 @@
       <div class="row row--tight">
         <button class="btn btn--primary" id="farmAddrSave">Save &amp; reload</button>
         <button class="btn btn--ghost" id="farmAddrCancel">Cancel</button>
+        ${A.wallets().length > 1 ? `<button class="btn btn--ghost" id="switchWalletBtn">Switch wallet</button>` : ""}
       </div>`;
     host.prepend(box);
     $("farmAddrInput").focus();
     $("farmAddrCancel").onclick = () => box.remove();
+    if ($("switchWalletBtn")) {
+      $("switchWalletBtn").onclick = () => {
+        box.remove();
+        connectThenLoad();
+      };
+    }
     $("farmAddrSave").onclick = () => {
       const v = $("farmAddrInput").value.trim();
       if (v && !E.isAddress(v)) {
@@ -509,15 +562,23 @@
   }
 
   async function connectThenLoad() {
+    // Farm.connect handles the network switch itself, and reloads if it happens.
     if (await A.connect()) await loadApes();
   }
 
   function wire() {
-    $("connectBtn").onclick = () => (A.state.account ? showFarmAddressForm() : connectThenLoad());
-    $("heroConnect").onclick = () =>
-      A.state.account
+    // On the wrong chain, every connect-ish button does the one thing that
+    // helps: get the wallet onto the farm's network.
+    $("connectBtn").onclick = () => {
+      if (A.wrongNetwork()) return switchToFarmNetwork();
+      return A.state.account ? showFarmAddressForm() : connectThenLoad();
+    };
+    $("heroConnect").onclick = () => {
+      if (A.wrongNetwork()) return switchToFarmNetwork();
+      return A.state.account
         ? document.getElementById("vault").scrollIntoView({ behavior: "smooth" })
         : connectThenLoad();
+    };
     $("changeFarmBtn").onclick = () => {
       showFarmAddressForm();
       $("notices").scrollIntoView({ behavior: "smooth", block: "center" });

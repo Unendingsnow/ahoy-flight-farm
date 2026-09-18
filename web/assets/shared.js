@@ -12,6 +12,8 @@
     ZERO,
     state: {
       provider: null,
+      injected: null, // raw EIP-1193 provider of the wallet in use
+      wallet: null, // { id, name, icon } of the wallet in use
       signer: null,
       account: null,
       chainId: null,
@@ -58,6 +60,34 @@
   };
   Farm.savedFarmAddress = () => localStorage.getItem(LS_FARM) || "";
   Farm.networkConfig = networkConfig;
+
+  /** The chain this farm actually lives on. */
+  Farm.defaultChainId = function () {
+    const cfg = window.FARM_CONFIG || {};
+    const nets = cfg.networks || {};
+    const configured = Number(cfg.defaultChainId);
+    if (configured && nets[configured] && nets[configured].farm) return configured;
+    for (const [id, net] of Object.entries(nets)) {
+      if (net && net.farm) return Number(id);
+    }
+    return configured || null;
+  };
+
+  Farm.networkName = function (chainId) {
+    const net = networkConfig(chainId);
+    return net ? net.name : `Chain ${chainId}`;
+  };
+
+  /**
+   * Connected, but on a chain this farm does not live on — the single most
+   * common reason the whole page reads as empty.
+   */
+  Farm.wrongNetwork = function () {
+    const s = Farm.state;
+    if (!s.account || s.farmAddress) return false;
+    const target = Farm.defaultChainId();
+    return Boolean(target) && target !== s.chainId;
+  };
 
   // ------------------------------------------------------------ formatting --
 
@@ -186,59 +216,314 @@
 
   // ---------------------------------------------------------------- wallet --
 
-  Farm.hasWallet = () => Boolean(window.ethereum);
+  /**
+   * Wallet discovery.
+   *
+   * window.ethereum is whichever injected wallet won the race to define it —
+   * with two extensions installed the other one is invisible and the user gets
+   * silently forced into one of them. EIP-6963 fixes that: every wallet
+   * announces itself on an event, so we can list them all and let the user
+   * choose. The legacy paths below (window.ethereum.providers, then
+   * window.ethereum) cover wallets that have not shipped 6963 yet.
+   */
 
-  Farm.connect = async function () {
-    if (!window.ethereum) {
-      Farm.toast("No wallet found. Install MetaMask (or another injected wallet).", "error", 9000);
-      return false;
+  const LS_WALLET = "nftstakefarm.walletRdns";
+  const discovered = new Map(); // rdns/uuid -> { id, name, icon, provider }
+
+  window.addEventListener("eip6963:announceProvider", (ev) => {
+    const d = ev.detail;
+    if (!d || !d.provider || !d.info) return;
+    const id = d.info.rdns || d.info.uuid;
+    discovered.set(id, { id, name: d.info.name || id, icon: d.info.icon || "", provider: d.provider });
+  });
+
+  function requestAnnouncements() {
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+  }
+  requestAnnouncements();
+
+  /** Best-effort name for a wallet that only injects the old way. */
+  function legacyName(p) {
+    const flags = [
+      ["isRabby", "Rabby"],
+      ["isBraveWallet", "Brave Wallet"],
+      ["isCoinbaseWallet", "Coinbase Wallet"],
+      ["isTrust", "Trust Wallet"],
+      ["isTrustWallet", "Trust Wallet"],
+      ["isOkxWallet", "OKX Wallet"],
+      ["isOKExWallet", "OKX Wallet"],
+      ["isPhantom", "Phantom"],
+      ["isFrame", "Frame"],
+      ["isTaho", "Taho"],
+      ["isTally", "Taho"],
+      ["isExodus", "Exodus"],
+      ["isZerion", "Zerion"],
+      ["isBitKeep", "Bitget Wallet"],
+      ["isMathWallet", "MathWallet"],
+      ["isOpera", "Opera Wallet"],
+      ["isXDEFI", "XDEFI"],
+      ["isMetaMask", "MetaMask"], // last: plenty of wallets set this flag too
+    ];
+    for (const [flag, name] of flags) if (p && p[flag]) return name;
+    return "Injected wallet";
+  }
+
+  /**
+   * Every wallet we can see, EIP-6963 first. Re-asks on each call because an
+   * extension can finish injecting after page load.
+   */
+  Farm.wallets = function () {
+    requestAnnouncements();
+    const out = [...discovered.values()];
+    const seen = new Set(out.map((w) => w.provider));
+
+    // window.ethereum.providers means the wallets multiplexed themselves; the
+    // window.ethereum on top is just a proxy for one of them, so skip it or it
+    // shows up a second time under whatever name it is currently proxying.
+    const legacy = [];
+    const eth = window.ethereum;
+    if (eth) {
+      if (Array.isArray(eth.providers) && eth.providers.length) legacy.push(...eth.providers);
+      else legacy.push(eth);
     }
-    try {
-      const provider = new E.BrowserProvider(window.ethereum, "any");
-      await provider.send("eth_requestAccounts", []);
-      const signer = await provider.getSigner();
-      const net = await provider.getNetwork();
+    const names = new Set(out.map((w) => w.name.toLowerCase()));
+    for (const p of legacy) {
+      if (!p || seen.has(p)) continue;
+      const name = legacyName(p);
+      // A wallet that also announced over 6963 is the same wallet under a
+      // different object — one row each, not two.
+      if (names.has(name.toLowerCase())) continue;
+      seen.add(p);
+      names.add(name.toLowerCase());
+      out.push({ id: "legacy:" + name, name, icon: "", provider: p, legacy: true });
+    }
+    return out;
+  };
 
-      Farm.state.provider = provider;
-      Farm.state.signer = signer;
-      Farm.state.account = await signer.getAddress();
-      Farm.state.chainId = Number(net.chainId);
+  Farm.hasWallet = () => Farm.wallets().length > 0;
 
-      if (!Farm._wired) {
-        Farm._wired = true;
-        window.ethereum.on("accountsChanged", () => location.reload());
-        window.ethereum.on("chainChanged", () => location.reload());
+  /** The raw EIP-1193 provider we are connected through. */
+  Farm.injected = () => Farm.state.injected || null;
+
+  const NO_WALLET =
+    "No wallet found. Install a browser wallet — MetaMask, Rabby, Brave, Coinbase, Trust, " +
+    "or any other injected wallet — then reload.";
+
+  // ------------------------------------------------------- wallet chooser --
+
+  let chooserOpen = null;
+
+  /** Modal list of every detected wallet. Resolves with a wallet, or null. */
+  function chooseWallet(list) {
+    if (chooserOpen) return chooserOpen;
+    const last = localStorage.getItem(LS_WALLET);
+
+    chooserOpen = new Promise((resolve) => {
+      const back = document.createElement("div");
+      back.className = "wallet-modal";
+      back.innerHTML =
+        `<div class="wallet-modal__box" role="dialog" aria-modal="true" aria-label="Choose a wallet">` +
+        `<div class="wallet-modal__head">` +
+        `<h3 class="wallet-modal__title">Choose a wallet</h3>` +
+        `<button class="wallet-modal__x" type="button" aria-label="Close">×</button>` +
+        `</div>` +
+        `<div class="wallet-modal__list"></div>` +
+        `<p class="wallet-modal__note">Not listed? Unlock the extension, then reload the page.</p>` +
+        `</div>`;
+
+      const listEl = back.querySelector(".wallet-modal__list");
+      list.forEach((w) => {
+        const row = document.createElement("button");
+        row.className = "wallet-opt";
+        row.type = "button";
+        const mark = w.icon
+          ? `<img class="wallet-opt__icon" alt="" src="${w.icon}">`
+          : `<span class="wallet-opt__icon wallet-opt__icon--blank">${(w.name[0] || "?").toUpperCase()}</span>`;
+        row.innerHTML =
+          mark +
+          `<span class="wallet-opt__name"></span>` +
+          (w.id === last ? `<span class="wallet-opt__tag">last used</span>` : "");
+        row.querySelector(".wallet-opt__name").textContent = w.name;
+        row.addEventListener("click", () => done(w));
+        listEl.appendChild(row);
+      });
+
+      function done(result) {
+        document.removeEventListener("keydown", onKey);
+        back.remove();
+        chooserOpen = null;
+        resolve(result);
+      }
+      function onKey(ev) {
+        if (ev.key === "Escape") done(null);
       }
 
-      await Farm.loadContracts();
-      await Farm.refresh();
+      back.addEventListener("click", (ev) => {
+        if (ev.target === back) done(null);
+      });
+      back.querySelector(".wallet-modal__x").addEventListener("click", () => done(null));
+      document.addEventListener("keydown", onKey);
+
+      document.body.appendChild(back);
+      const first = listEl.querySelector(".wallet-opt");
+      if (first) first.focus();
+    });
+
+    return chooserOpen;
+  }
+
+  // ----------------------------------------------------------- connecting --
+
+  let wired = null; // provider we have attached account/chain listeners to
+  const reloadPage = () => location.reload();
+
+  function wireEvents(p) {
+    if (wired === p) return;
+    if (wired && wired.removeListener) {
+      wired.removeListener("accountsChanged", reloadPage);
+      wired.removeListener("chainChanged", reloadPage);
+    }
+    if (p && p.on) {
+      p.on("accountsChanged", reloadPage);
+      p.on("chainChanged", reloadPage);
+    }
+    wired = p;
+  }
+
+  async function connectWith(entry) {
+    const provider = new E.BrowserProvider(entry.provider, "any");
+    await provider.send("eth_requestAccounts", []);
+    const signer = await provider.getSigner();
+    const net = await provider.getNetwork();
+
+    Farm.state.provider = provider;
+    Farm.state.injected = entry.provider;
+    Farm.state.wallet = { id: entry.id, name: entry.name, icon: entry.icon };
+    Farm.state.signer = signer;
+    Farm.state.account = await signer.getAddress();
+    Farm.state.chainId = Number(net.chainId);
+
+    try {
+      localStorage.setItem(LS_WALLET, entry.id);
+    } catch {
+      /* private mode — remembering the choice is a nicety, not a requirement */
+    }
+
+    wireEvents(entry.provider);
+
+    // Connecting means connecting to THIS farm's chain. A wallet that opened on
+    // Ethereum (or anywhere else) gets asked to move as part of the connect, the
+    // way every other dApp does it — not left to figure it out from a notice.
+    // Declining is survivable: they stay connected and the notice takes over.
+    if (needsNetworkSwitch() && (await Farm.switchToFarm())) return true; // reloading
+
+    await Farm.loadContracts();
+    await Farm.refresh();
+    return true;
+  }
+
+  /**
+   * True when the wallet sits on a chain this farm does not live on. A farm
+   * address configured (or saved) for the current chain counts as deliberate,
+   * so those are left alone.
+   */
+  function needsNetworkSwitch() {
+    const s = Farm.state;
+    const target = Farm.defaultChainId();
+    if (!target || s.chainId === target) return false;
+    return !resolveFarmAddress(s.chainId);
+  }
+
+  /**
+   * Move the wallet to the farm's chain. The wallet renders its own approve
+   * dialog — we cannot switch anyone silently, and should not want to — so hold
+   * a toast up while it is open: that popup often lands behind the browser
+   * window, and a silent page reads as broken.
+   */
+  Farm.switchToFarm = async function () {
+    const target = Farm.defaultChainId();
+    if (!target) return false;
+    const name = Farm.networkName(target);
+    const dismiss = Farm.toast(`Approve the switch to ${name} in your wallet…`, "pending", 0);
+    try {
+      await Farm.switchNetwork(target);
+      dismiss();
+      // chainChanged usually reloads first; not every wallet fires it.
+      location.reload();
       return true;
+    } catch (err) {
+      dismiss();
+      Farm.toast(`Still on ${Farm.networkName(Farm.state.chainId)} — ${Farm.errorMessage(err)}`, "error", 9000);
+      return false;
+    }
+  };
+
+  /**
+   * Connect on purpose. With more than one wallet installed the user picks —
+   * every time, so a wrong pick is never sticky.
+   */
+  Farm.connect = async function () {
+    const list = Farm.wallets();
+    if (list.length === 0) {
+      Farm.toast(NO_WALLET, "error", 9000);
+      return false;
+    }
+    const entry = list.length === 1 ? list[0] : await chooseWallet(list);
+    if (!entry) return false;
+
+    try {
+      return await connectWith(entry);
     } catch (err) {
       Farm.toast(Farm.errorMessage(err), "error");
       return false;
     }
   };
 
-  /** Reconnects silently if the wallet is already authorised for this site. */
+  /** Reconnects silently if a wallet is already authorised for this site. */
   Farm.autoConnect = async function () {
-    if (!window.ethereum) return false;
+    const list = Farm.wallets();
+    if (list.length === 0) return false;
+
+    // Prefer the one used last time, then anything already holding an approval.
+    let last = null;
     try {
-      const accounts = await window.ethereum.request({ method: "eth_accounts" });
-      if (!accounts || accounts.length === 0) return false;
-      return await Farm.connect();
+      last = localStorage.getItem(LS_WALLET);
     } catch {
-      return false;
+      /* no storage, no preference */
+    }
+    const ordered = list.slice().sort((a, b) => (b.id === last) - (a.id === last));
+
+    for (const entry of ordered) {
+      try {
+        const accounts = await entry.provider.request({ method: "eth_accounts" });
+        if (!accounts || accounts.length === 0) continue;
+        return await connectWith(entry);
+      } catch {
+        /* locked or unhappy — try the next one */
+      }
+    }
+    return false;
+  };
+
+  /** Drops the remembered choice so the next auto-connect starts clean. */
+  Farm.forgetWallet = function () {
+    try {
+      localStorage.removeItem(LS_WALLET);
+    } catch {
+      /* nothing to forget */
     }
   };
 
   Farm.switchNetwork = async function (chainId) {
+    const eth = Farm.injected();
+    if (!eth) throw new Error("No wallet connected");
     const hex = "0x" + Number(chainId).toString(16);
     const net = networkConfig(chainId) || {};
     try {
-      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
+      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
     } catch (err) {
       if (err.code === 4902 || /Unrecognized chain/i.test(err.message || "")) {
-        await window.ethereum.request({
+        await eth.request({
           method: "wallet_addEthereumChain",
           params: [
             {
