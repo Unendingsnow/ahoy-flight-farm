@@ -1,7 +1,9 @@
 /* =============================================================================
    Open sky — the farm's visual language.
 
-   Bright blue sky, drifting clouds, frosted cards floating in the middle of it.
+   Bright blue sky, drifting clouds, translucent cards floating in the middle of
+   it. Only the nav is truly frosted — backdrop-filter is re-computed whenever
+   its backdrop moves, so it is spent on one element rather than twenty-five.
    Dark mode becomes dusk rather than a grey inversion, so the metaphor survives
    the theme switch.
 
@@ -224,10 +226,16 @@ a { color: inherit; }
 
 /* ------------------------------------------------------------------- cards */
 /*
- * Frosted, but not ruinously so. Every one of these re-computes its blur on
- * each frame that the clouds move behind it, and index.html carries a dozen —
- * so the radius is the single most expensive number on the page. 10px reads
- * the same as 16px over a soft gradient and costs noticeably less.
+ * Translucent, not blurred.
+ *
+ * backdrop-filter re-samples and re-blurs its backdrop every time that backdrop
+ * changes — so with a fixed sky, drifting clouds and a sticky nav, twelve cards
+ * meant twelve full-surface blurs on every scroll and animation frame. What it
+ * bought was nothing: the backdrop here is a smooth gradient behind soft-edged
+ * clouds, and blurring something already blurry is invisible. The frost reads
+ * identically from translucency and a bright hairline alone.
+ *
+ * .nav keeps its blur — one element, and it genuinely passes over sharp text.
  */
 .card {
   background: var(--card);
@@ -235,8 +243,6 @@ a { color: inherit; }
   border-radius: var(--r-lg);
   padding: 1.25rem 1.35rem;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(10px) saturate(1.3);
-  -webkit-backdrop-filter: blur(10px) saturate(1.3);
 }
 
 .card--feature {
@@ -301,8 +307,6 @@ a { color: inherit; }
               background 0.18s ease;
   box-shadow: 0 4px 14px -8px rgba(13, 50, 71, 0.5);
   white-space: nowrap;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 .btn:hover:not(:disabled) { transform: translateY(-1.5px); box-shadow: 0 12px 26px -12px rgba(13, 50, 71, 0.55); }
 .btn:active:not(:disabled) { transform: translateY(0); }
@@ -343,8 +347,6 @@ a { color: inherit; }
   border: 1px solid var(--card-line);
   font-size: 0.82rem;
   font-weight: 600;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 .pill--ok { color: var(--ok); }
 .pill--warn { color: var(--warn); }
@@ -591,8 +593,6 @@ a { color: inherit; }
   background: var(--card);
   border: 1px solid var(--card-line);
   font-size: 0.9rem;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .notice--error { border-color: var(--err); color: var(--err); }
 .notice__icon { flex: none; }
@@ -1045,14 +1045,7 @@ html.wallet-modal-open .clouds { visibility: hidden; }
 
 /* ------------------------------------------------------------- responsive */
 @media (max-width: 640px) {
-  /* Phones feel the frost cost most and notice it least — a dozen live blurs
-     is the difference between smooth scrolling and not. Swap to an opaque
-     card instead. */
-  .card {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: var(--card-solid);
-  }
+  /* The one remaining blur goes too on phones, where it costs most. */
   .nav { backdrop-filter: none; -webkit-backdrop-filter: none; }
 
   .wrap { width: min(1180px, 100% - 1.6rem); }
